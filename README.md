@@ -14,7 +14,9 @@ Play it: https://claude.ai/artifact/VcMW5pSRt5heZtdz6jWTXC (private Claude artif
 | `levels/levels.json` | Generated level data (committed, so you can build without the dictionary). |
 | `build.js` | Pastes the level data into the game and writes `dist/letter-loom.html`. |
 | `dist/letter-loom.html` | The single-file game, as published to the Claude artifact (the host supplies the doctype and viewport). |
-| `dist/standalone.html` | The same game with its own doctype, charset and viewport, for opening directly or hosting anywhere. |
+| `dist/app/` | The installable web app: `index.html`, manifest, offline service worker and icons. Upload this folder to any HTTPS static host. |
+| `src/manifest.webmanifest`, `src/sw.js` | App name, colours and icons for installing; the service worker that caches the game for offline play. |
+| `icons/`, `scripts/make-icons.js` | App icons, drawn by the script (`node scripts/make-icons.js`). |
 | `words/` | The ENABLE word list (git-ignored; fetch it with `npm run dictionary`). |
 
 ## Commands
@@ -22,12 +24,21 @@ Play it: https://claude.ai/artifact/VcMW5pSRt5heZtdz6jWTXC (private Claude artif
 Needs Node 18 or newer. There are no dependencies.
 
 ```sh
-npm run build        # rebuild both files in dist/ from src + levels.json
+npm run build        # rebuild dist/letter-loom.html and dist/app/ from src + levels.json
 npm run dictionary   # download the ENABLE word list into words/
 npm run levels       # regenerate levels.json (layouts, then bonus words); needs the word list
 ```
 
 After editing the word lists in `levels/layout.js`, run `npm run levels` and then `npm run build`.
+
+## Installing on a phone
+
+The Claude artifact can't be installed, because it runs inside claude.ai. Host `dist/app/` on any HTTPS site, then:
+
+- **Android (Chrome):** open the site and tap the install button in the game's header, or use the browser menu's *Install app*.
+- **iPhone (Safari):** tap the install button for the steps: Share → *Add to Home Screen*.
+
+Once installed, it opens full screen and works offline. Each build changes the cache version, so installed copies pick up updates the next time they open online.
 
 ## Notes
 

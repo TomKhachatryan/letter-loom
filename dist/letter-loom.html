@@ -57,6 +57,8 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 }
 button.chip { cursor: pointer; }
 .chip svg { width: 18px; height: 18px; flex: none; }
+.chip.icon-only { padding: 6px 8px; }
+.steps { margin: 0; padding-left: 1.4em; text-align: left; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
 
 .board { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; position: relative; }
 .grid { position: relative; }
@@ -175,6 +177,9 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
   <header>
     <div class="brand">Letter Loom<small id="lvlLabel">Level 1 of 18</small></div>
     <div class="chips">
+      <button class="chip icon-only" id="installBtn" aria-label="Install Letter Loom on your home screen" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+      </button>
       <button class="chip" id="bonusBtn" aria-label="Bonus words found">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>
         <span id="bonusCount">0</span>
@@ -222,6 +227,19 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <p id="bonusIntro">Any real word of three or more letters that isn't in the grid earns 3 spools.</p>
     <div class="words" id="bonusWords"></div>
     <button class="primary" id="bonusClose">Back to the puzzle</button>
+  </div>
+</div>
+
+<div class="sheet" id="installSheet" hidden>
+  <div class="card">
+    <div class="eyebrow">Install</div>
+    <h2>Add Letter Loom to your home screen</h2>
+    <ol class="steps">
+      <li>Tap the <strong>Share</strong> button in Safari's toolbar.</li>
+      <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+      <li>Tap <strong>Add</strong>. Letter Loom then opens full screen and works offline.</li>
+    </ol>
+    <button class="primary" id="installClose">Got it</button>
   </div>
 </div>
 
@@ -552,6 +570,27 @@ $('bonusBtn').onclick = () => {
 };
 $('bonusClose').onclick = () => { $('bonusSheet').hidden = true; };
 $('startBtn').onclick = () => { $('startSheet').hidden = true; S.seen = true; save(); };
+
+// ---- install ----
+// Chrome and Android fire beforeinstallprompt; iPhone Safari never does, so the app build shows Share-sheet steps there.
+let installEvt = null;
+const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const iosSafari = () => (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+  && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('installBtn').hidden = false; });
+addEventListener('appinstalled', () => { installEvt = null; $('installBtn').hidden = true; toast('Letter Loom is on your home screen'); });
+if (window.LETTER_LOOM_APP && iosSafari() && !installed()) $('installBtn').hidden = false;
+$('installBtn').onclick = async () => {
+  if (installEvt) {
+    installEvt.prompt();
+    try { await installEvt.userChoice; } catch (_) {}
+    installEvt = null;
+    $('installBtn').hidden = true;
+  } else {
+    $('installSheet').hidden = false;
+  }
+};
+$('installClose').onclick = () => { $('installSheet').hidden = true; };
 
 function updateHud() {
   $('coins').textContent = S.coins;
