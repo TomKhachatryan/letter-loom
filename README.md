@@ -1,6 +1,6 @@
 # Letter Loom
 
-A swipe-to-spell crossword game for phones. Drag across the letter wheel to spell words and fill the grid. There are 32 levels, from 3-letter wheels up to 7-letter wheels, plus bonus words drawn from a full dictionary.
+A swipe-to-spell crossword game for phones. Drag across the letter wheel to spell words and fill the grid. Every grid word is a construction term (materials, tools, structure, trades, site and scheduling words). There are 28 levels, from 4-letter wheels up to 7-letter wheels, plus bonus words: any common English word that isn't in the grid.
 
 Play it: https://tomkhachatryan.github.io/letter-loom/ (open it on your phone to add it to your home screen)
 
@@ -9,6 +9,7 @@ Play it: https://tomkhachatryan.github.io/letter-loom/ (open it on your phone to
 | Path | What it is |
 | --- | --- |
 | `src/game.html` | The game: markup, styles and script. Level data goes in at `/*LEVELS*/[]`. |
+| `levels/construction-words.txt` | The construction vocabulary. Every grid word must come from it. |
 | `levels/layout.js` | Word lists for each level, plus the crossword layout generator. |
 | `levels/bonus.js` | Adds bonus words: common English words (3+ letters) that can be spelled from a level's letters and aren't in its grid. |
 | `levels/bonus-exclude.txt` | Words that pass the common-word filters but shouldn't count (names, abbreviations, archaic or crude words). |

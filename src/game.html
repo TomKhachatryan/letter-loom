@@ -317,7 +317,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
   <div class="card">
     <div class="eyebrow">How to play</div>
     <h2>Drag across the letters to spell words</h2>
-    <p>Every word you find fills its row or column in the grid. Fill the whole grid to finish the level.</p>
+    <p>Every word in the grid is a construction term. Each one you find fills its row or column. Fill the whole grid to finish the level.</p>
     <p>Don't know a word? Tap it in the grid to see it in Russian, Spanish or French.</p>
     <p>Stuck? Shuffle the wheel, or spend <span id="introCost">30</span> spools to reveal a letter. Extra words that aren't in the grid fill the bonus meter, and a full meter gives a free hint.</p>
     <button class="primary" id="startBtn">Start weaving</button>
@@ -387,13 +387,15 @@ let order = [];   // wheel order: indexes into LV.l
 let letterEls = [];
 let sel = [], dragging = false, ptr = null;
 
-// v2 saves identify their level by levelId; saves without v predate that and need the one-time shift in migrate()
+// v2 saves identify their level by levelId
 const SAVE_VERSION = 2;
+// which word set a save belongs to; a save from another set starts over at level 1 (see start())
+const CONTENT = 'construction-1';
 // a new level's state; coins, the bonus meter, free hints and scoreboard stats carry over from `prev`
 // (done: ids of levels ever completed; words: grid and bonus words ever found)
 function fresh(level = 0, prev = {}) {
   return {
-    v: SAVE_VERSION, level, found: [], bonus: [], hints: [], completed: false,
+    v: SAVE_VERSION, content: CONTENT, level, found: [], bonus: [], hints: [], completed: false,
     coins: prev.coins ?? 100, meter: prev.meter ?? 0, freeHints: prev.freeHints ?? 0, seen: prev.seen ?? false,
     done: prev.done ?? [], words: prev.words ?? 0,
   };
@@ -432,10 +434,8 @@ function migrate(s) {
   if (typeof s.levelId === 'string') {
     const i = LEVELS.findIndex(l => l.l === s.levelId);
     if (i >= 0) s.level = i;
-  } else if (s.v === undefined && s.level >= 6) {
-    s.level += 4; // unversioned saves predate the four 5-letter levels inserted after level 6
   }
-  s.v = SAVE_VERSION; // stamp it so the shift can never run twice
+  s.v = SAVE_VERSION;
 }
 // drop saved words and hints that no longer belong to this level (e.g. after levels are regenerated)
 function prune() {
@@ -988,11 +988,18 @@ function buzz() { tone(150, 0.18, 0.05, 'sawtooth'); try { navigator.vibrate?.([
 // ---- boot ----
 function start(data) {
   S = (data && valid(normalize(data.S)) && data.S) || load() || fresh();
+  // progress from a different word set (e.g. the original general-English levels) doesn't carry over
+  const newWordSet = S.content !== CONTENT;
+  if (newWordSet) S = fresh(0, { seen: S.seen });
   migrate(S);
   backfillStats(S);
   if (S.level >= LEVELS.length) S = fresh(0, S);
   buildLevel();
   save();
+  if (newWordSet && S.seen) {
+    submitScore(); // the scoreboard row starts over with the game
+    setTimeout(() => toast('New construction word set: starting from level 1', 3200), 600);
+  }
   if (!S.seen) { introShown = true; $('startSheet').hidden = false; } // checkDone runs when it's dismissed
   else checkDone();
 }
