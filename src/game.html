@@ -263,6 +263,15 @@ function load() {
   try { const s = JSON.parse(localStorage.getItem(KEY)); if (valid(s)) return s; } catch (e) {}
   return null;
 }
+// saves record their level by its wheel letters, so inserting or reordering levels keeps players on the same puzzle
+function migrate(s) {
+  if (typeof s.levelId === 'string') {
+    const i = LEVELS.findIndex(l => l.l === s.levelId);
+    if (i >= 0) s.level = i;
+  } else if (s.level >= 6) {
+    s.level += 4; // saves from before levelId existed predate the four 5-letter levels inserted after level 6
+  }
+}
 // drop saved words and hints that no longer belong to this level (e.g. after levels are regenerated)
 function prune() {
   const grid = new Set(LV.words.map(p => p.w)), bonus = new Set(LV.bonus);
@@ -282,6 +291,7 @@ function cellsOf(p) {
 
 function buildLevel() {
   LV = LEVELS[S.level];
+  S.levelId = LV.l;
   $('lvlLabel').textContent = `Level ${S.level + 1} of ${LEVELS.length}`;
   const grid = $('grid');
   grid.innerHTML = '';
@@ -574,6 +584,7 @@ function buzz() { tone(150, 0.18, 0.05, 'sawtooth'); try { navigator.vibrate?.([
 // ---- boot ----
 function start(data) {
   S = (data && valid(data.S) && data.S) || load() || fresh();
+  migrate(S);
   if (S.level >= LEVELS.length) S = fresh(0, S.coins, true);
   buildLevel();
   save();
