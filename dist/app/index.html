@@ -157,6 +157,9 @@ button.chip { cursor: pointer; }
   font: 700 .7rem var(--body); border-radius: 999px; padding: 2px 6px; font-variant-numeric: tabular-nums;
 }
 .tool:disabled { opacity: .45; }
+#muteBtn .sound-off, #muteBtn[aria-pressed="true"] .sound-on { display: none; }
+#muteBtn[aria-pressed="true"] .sound-off { display: block; }
+#muteBtn[aria-pressed="true"] { color: var(--muted); }
 button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
 .toast {
@@ -239,6 +242,10 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
   <div class="dock">
     <div class="toast" id="toast"></div>
+    <button type="button" class="tool left" id="muteBtn" aria-pressed="false" aria-label="Mute sounds">
+      <svg class="sound-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      <svg class="sound-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6M22 9l-6 6"/></svg>
+    </button>
     <div class="wheel" id="wheel" role="application" aria-label="Letter wheel. Drag across letters to spell a word.">
       <button type="button" class="center-shuffle" id="shuffleBtn" aria-label="Shuffle letters">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
@@ -734,8 +741,25 @@ function spool() {
 }
 
 // ---- sound & haptics (start only after the player touches the wheel) ----
+// mute is a per-device preference, kept apart from game progress; it silences sound, not vibration
+const MUTE_KEY = KEY + '-muted';
+let muted = false;
+try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (_) {}
+function renderMute() {
+  $('muteBtn').setAttribute('aria-pressed', String(muted));
+  $('muteBtn').setAttribute('aria-label', muted ? 'Turn sounds on' : 'Mute sounds');
+}
+renderMute();
+$('muteBtn').onclick = () => {
+  muted = !muted;
+  try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {}
+  renderMute();
+  toast(muted ? 'Sounds off' : 'Sounds on');
+};
+
 let ac;
 function tone(freq, dur, vol = 0.05, type = 'triangle') {
+  if (muted) return;
   try {
     ac = ac || new (window.AudioContext || window.webkitAudioContext)();
     const o = ac.createOscillator(), g = ac.createGain();
