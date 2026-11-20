@@ -10,7 +10,8 @@ Play it: https://tomkhachatryan.github.io/letter-loom/ (open it on your phone to
 | --- | --- |
 | `src/game.html` | The game: markup, styles and script. Level data goes in at `/*LEVELS*/[]`. |
 | `levels/layout.js` | Word lists for each level, plus the crossword layout generator. |
-| `levels/bonus.js` | Adds bonus words: every dictionary word (3+ letters) that can be spelled from a level's letters and isn't in its grid. |
+| `levels/bonus.js` | Adds bonus words: common English words (3+ letters) that can be spelled from a level's letters and aren't in its grid. |
+| `levels/bonus-exclude.txt` | Words that pass the common-word filters but shouldn't count (names, abbreviations, archaic or crude words). |
 | `levels/translations.{ru,es,fr}.json` | Russian, Spanish and French translations for every grid word, shown when a player taps a word. The build stops if a grid word is missing from any of them. |
 | `levels/levels.json` | Generated level data (committed, so you can build without the dictionary). |
 | `build.js` | Pastes the level data into the game and writes `dist/letter-loom.html`. |
@@ -18,7 +19,7 @@ Play it: https://tomkhachatryan.github.io/letter-loom/ (open it on your phone to
 | `dist/app/` | The installable web app: `index.html`, manifest, offline service worker and icons. Upload this folder to any HTTPS static host. |
 | `src/manifest.webmanifest`, `src/sw.js` | App name, colours and icons for installing; the service worker that caches the game for offline play. |
 | `icons/`, `scripts/make-icons.js` | App icons, drawn by the script (`node scripts/make-icons.js`). |
-| `words/` | The ENABLE word list (git-ignored; fetch it with `npm run dictionary`). |
+| `words/` | Word lists used by `bonus.js` (git-ignored; fetch them with `npm run dictionary`). |
 
 ## Commands
 
@@ -26,7 +27,7 @@ Needs Node 18 or newer. There are no dependencies.
 
 ```sh
 npm run build        # rebuild dist/letter-loom.html and dist/app/ from src + levels.json
-npm run dictionary   # download the ENABLE word list into words/
+npm run dictionary   # download the word lists into words/
 npm run levels       # regenerate levels.json (layouts, then bonus words); needs the word list
 npm run deploy       # build, then publish dist/app/ to GitHub Pages
 ```
@@ -46,4 +47,7 @@ Once installed, it opens full screen and works offline. Each build changes the c
 
 - The layout generator checks against `/usr/share/dict/words` (macOS) and prints `BAD` for any word that can't be spelled from the level's letters.
 - Progress is saved in the browser's `localStorage` under `letter-loom-v1`.
-- The ENABLE word list is in the public domain.
+- Bonus words must appear in all three word lists, and outside `levels/bonus-exclude.txt`:
+  - [ENABLE](https://github.com/dolph/dictionary): public domain.
+  - [12dicts](http://wordlist.aspell.net/12dicts/) `2of12inf` by Alan Beale, built on AGID by Kevin Atkinson: public domain / AGID licence.
+  - [FrequencyWords](https://github.com/hermitdave/FrequencyWords) by Hermit Dave: CC BY-SA 4.0. Used only to keep the 20,000 most frequent words.

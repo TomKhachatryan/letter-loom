@@ -1,0 +1,42 @@
+# Words that pass the common-word filters in bonus.js but shouldn't count as bonus words.
+# One per line; anything after # is ignored.
+
+# names
+KENT
+TOM
+# foreign words, abbreviations, letters
+CHI
+DOS
+LAS
+MAS
+OLE
+PAS
+PSI
+REC
+SEC
+SERA
+SOL
+TAU
+TIC
+TIS
+# archaic, dialect or very rare in everyday use
+ARES
+BERG
+ERE
+HART
+INS
+KEN
+LAM
+LEA
+LEI
+LIRE
+MAR
+RAH
+RANI
+TAM
+TOR
+WEN
+# crude or offensive
+CRAP
+HICK
+RAPE
