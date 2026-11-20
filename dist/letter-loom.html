@@ -124,6 +124,26 @@ button.chip { cursor: pointer; }
   pointer-events: none;
 }
 .letter.sel { background: var(--madder); color: var(--linen); }
+
+/* tutorial (level 1): a coach card under the grid, glowing letters, a ghost finger tracing the path */
+.coach {
+  flex: none; margin: 0 auto; width: min(100%, 380px); box-sizing: border-box;
+  background: var(--linen); color: var(--ink); border-radius: 14px; padding: 10px 14px 8px;
+  box-shadow: 0 4px 0 var(--linen-edge); display: flex; flex-direction: column; gap: 4px;
+}
+.coach p { margin: 0; font: 600 .98rem/1.4 var(--body); }
+.coach p strong { font-family: var(--display); color: var(--madder); letter-spacing: .04em; }
+.coach-skip { align-self: flex-end; font: 600 .8rem var(--body); color: #6b6380; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 2px; }
+.letter.guide { box-shadow: 0 0 0 3px var(--saffron); animation: glow 1.4s ease-in-out infinite; }
+.letter.guide.sel { box-shadow: none; animation: none; }
+@keyframes glow { 50% { box-shadow: 0 0 0 7px rgba(242,182,64,.35); } }
+.cell.guide { outline: 3px solid var(--saffron); outline-offset: 2px; animation: glow-cell 1.4s ease-in-out infinite; }
+@keyframes glow-cell { 50% { outline-color: rgba(242,182,64,.35); } }
+.ghost-finger {
+  position: absolute; left: 0; top: 0; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%;
+  background: rgba(241,232,212,.55); border: 2px solid var(--linen); pointer-events: none; z-index: 3;
+}
+.wheel.dragging .ghost-finger { visibility: hidden; }
 /* shuffle sits in the empty middle of the wheel, inside the ring of letters and below the thread */
 .center-shuffle {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -258,6 +278,11 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
   <main class="board" id="board"><div class="grid" id="grid"></div></main>
 
+  <div class="coach" id="coach" role="status" hidden>
+    <p id="coachText"></p>
+    <button type="button" class="coach-skip" id="coachSkip">Skip tutorial</button>
+  </div>
+
   <div class="preview" id="preview" aria-live="polite"></div>
 
   <div class="dock">
@@ -269,6 +294,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
       <button type="button" class="center-shuffle" id="shuffleBtn" aria-label="Shuffle letters">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
       </button>
+      <div class="ghost-finger" id="ghost" aria-hidden="true" hidden></div>
       <svg id="thread"><polyline id="line" points=""/></svg>
     </div>
     <button class="tool right" id="hintBtn" aria-label="Reveal a letter">
@@ -386,6 +412,7 @@ let cells;        // Map "x,y" -> {el, ch}
 let order = [];   // wheel order: indexes into LV.l
 let letterEls = [];
 let sel = [], dragging = false, ptr = null;
+let tutStep = null, tutTranslated = false; // tutorial progress on level 1 (see the tutorial section)
 
 // v2 saves identify their level by levelId
 const SAVE_VERSION = 2;
@@ -491,6 +518,7 @@ function buildLevel() {
   for (const w of S.found) { const p = LV.words.find(q => q.w === w); if (p) cellsOf(p).forEach(k => cells.get(k).el.classList.add('on')); }
   for (const k of S.hints) cells.get(k)?.el.classList.add('hinted');
   updateHud();
+  updateTutorial();
 }
 
 function layoutGrid() {
@@ -551,6 +579,7 @@ function positionLetters() {
     const c = centerOf(slot), el = letterEls[li];
     Object.assign(el.style, { left: c.x + 'px', top: c.y + 'px', width: d + 'px', height: d + 'px', fontSize: Math.round(d * 0.55) + 'px' });
   });
+  runGhost(); // letters moved (shuffle or resize), so retrace the tutorial path
 }
 
 // ---- input ----
@@ -589,6 +618,7 @@ wheel.addEventListener('pointerdown', e => {
   e.preventDefault();
   try { wheel.setPointerCapture(e.pointerId); } catch (_) {}
   dragging = true; sel = [li]; ptr = localPt(e);
+  wheel.classList.add('dragging');
   tick(0);
   drawThread();
 });
@@ -605,6 +635,7 @@ wheel.addEventListener('pointermove', e => {
 const end = () => {
   if (!dragging) return;
   dragging = false; ptr = null;
+  wheel.classList.remove('dragging');
   const word = sel.map(li => LV.l[li]).join('');
   sel = [];
   $('line').setAttribute('points', '');
@@ -646,6 +677,7 @@ function submit(word) {
     autoComplete();
     save(); updateHud();
     checkDone();
+    updateTutorial();
     return;
   }
   if (word.length >= 3 && LV.bonus.includes(word)) {
@@ -683,6 +715,7 @@ function autoComplete() {
 
 function checkDone() {
   if (!allFound()) return;
+  if (S.level === 0 && tutorialActive()) finishTutorial();
   // pay the reward once per level, even if the page is reloaded on the done screen
   if (!S.completed) {
     S.completed = true;
@@ -695,8 +728,9 @@ function checkDone() {
 }
 function showDone() {
   const last = S.level === LEVELS.length - 1;
-  $('doneEyebrow').textContent = `Level ${S.level + 1} complete`;
-  $('doneTitle').textContent = last ? 'You finished every level' : ['Nicely woven', 'Tight weave', 'Not a loose thread', 'Clean pattern'][S.level % 4];
+  $('doneEyebrow').textContent = S.level === 0 ? 'Tutorial complete' : `Level ${S.level + 1} complete`;
+  $('doneTitle').textContent = S.level === 0 ? "You're ready to build"
+    : last ? 'You finished every level' : ['Nicely woven', 'Tight weave', 'Not a loose thread', 'Clean pattern'][S.level % 4];
   $('doneWords').innerHTML = LV.words.map(p => p.w).sort((a, b) => b.length - a.length || a.localeCompare(b)).map(wordButton).join('');
   $('doneReward').innerHTML = `${spool()} +${LEVEL_REWARD} spools` + (S.bonus.length ? ` · ${S.bonus.length} bonus word${S.bonus.length > 1 ? 's' : ''}` : '');
   $('nextBtn').textContent = last ? 'Play again from level 1' : `Start level ${S.level + 2}`;
@@ -723,7 +757,7 @@ $('hintBtn').onclick = () => {
       S.hints.push(k);
       if (S.freeHints) S.freeHints--; else S.coins -= HINT_COST; // free hints from the bonus meter are used first
       const el = cells.get(k).el; el.classList.add('hinted', 'pulse');
-      autoComplete(); save(); updateHud(); checkDone();
+      autoComplete(); save(); updateHud(); checkDone(); updateTutorial();
       return;
     }
   }
@@ -775,7 +809,10 @@ $('langs').addEventListener('click', e => {
   setPref('lang', lang);
   showWords(shownWords);
 });
-$('wordClose').onclick = () => { $('wordSheet').hidden = true; };
+$('wordClose').onclick = () => {
+  $('wordSheet').hidden = true;
+  if (tutStep === 'translate') { tutTranslated = true; updateTutorial(); }
+};
 // tap a found word in the grid; a crossing cell shows both words
 $('grid').addEventListener('click', e => {
   const el = e.target.closest('.cell');
@@ -914,12 +951,72 @@ $('menuReset').onclick = () => {
 $('resetNo').onclick = () => { $('resetConfirm').hidden = true; $('menuMain').hidden = false; $('menuReset').focus(); };
 $('resetYes').onclick = () => {
   S = fresh(0, { seen: true });
+  setPref('tutorial', ''); // starting over replays the tutorial
+  tutTranslated = false;
   $('menuSheet').hidden = true;
   buildLevel();
   save();
   submitScore();
   toast('Started over from level 1');
 };
+
+// ---- tutorial (level 1) ----
+// A guided first round: spell TAP with a traced path, tap it to translate, then find the rest.
+// Runs on level 1 until it's completed or skipped; starting over replays it.
+const TUT = { word: 'TAP', bonus: 'PART' };
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function tutorialActive() {
+  return !!S && S.level === 0 && pref('tutorial') !== 'done' && LEVELS[0].words.some(p => p.w === TUT.word);
+}
+// wheel letter indexes that spell TUT.word
+function tutPath() {
+  const used = new Set();
+  return [...TUT.word].map(ch => { const i = [...LV.l].findIndex((c, j) => c === ch && !used.has(j)); used.add(i); return i; });
+}
+function updateTutorial() {
+  let step = null;
+  if (LV && tutorialActive() && !allFound()) {
+    step = !S.found.includes(TUT.word) ? 'swipe' : !tutTranslated ? 'translate' : 'rest';
+  }
+  const changed = step !== tutStep || step === 'rest';
+  tutStep = step;
+  letterEls.forEach(el => el.classList.remove('guide'));
+  if (cells) cells.forEach(c => c.el.classList.remove('guide'));
+  if (step === 'swipe') {
+    tutPath().forEach(i => letterEls[i]?.classList.add('guide'));
+    $('coachText').innerHTML = 'Drag your finger from <strong>T</strong> to <strong>A</strong> to <strong>P</strong> to spell <strong>TAP</strong>, then let go.';
+  } else if (step === 'translate') {
+    cellsOf(LV.words.find(p => p.w === TUT.word)).forEach(k => cells.get(k).el.classList.add('guide'));
+    $('coachText').innerHTML = '<strong>TAP</strong> is in the grid. Tap it to see what it means in Russian, Spanish or French.';
+  } else if (step === 'rest') {
+    const left = LV.words.filter(p => !S.found.includes(p.w)).length;
+    $('coachText').innerHTML = `Now find the other ${left} word${left === 1 ? '' : 's'}. Words that aren't in the grid, like <strong>${TUT.bonus}</strong>, fill the ★ meter. Stuck? The middle button shuffles, and the bulb reveals a letter.`;
+  }
+  if (changed) {
+    $('coach').hidden = !step;
+    layoutGrid(); // the coach card takes room from the board
+  }
+  runGhost();
+}
+// a ghost fingertip that traces the path over the wheel, looping
+function runGhost() {
+  const g = $('ghost');
+  g.getAnimations?.().forEach(a => a.cancel());
+  if (tutStep !== 'swipe' || reduceMotion || !LV || !g.animate) { g.hidden = true; return; }
+  const pts = tutPath().map(i => centerOf(slotOf(i)));
+  const at = (p, s = 1) => `translate(${p.x}px, ${p.y}px) scale(${s})`;
+  const last = pts[pts.length - 1];
+  g.hidden = false;
+  g.animate([
+    { transform: at(pts[0], .6), opacity: 0, offset: 0 },
+    { transform: at(pts[0]), opacity: 1, offset: .12 },
+    ...pts.slice(1).map((p, i) => ({ transform: at(p), opacity: 1, offset: .12 + (.6 * (i + 1)) / (pts.length - 1) })),
+    { transform: at(last, .6), opacity: 0, offset: .88 },
+    { transform: at(last, .6), opacity: 0, offset: 1 },
+  ], { duration: 2800, iterations: Infinity, easing: 'ease-in-out' });
+}
+function finishTutorial() { setPref('tutorial', 'done'); updateTutorial(); }
+$('coachSkip').onclick = () => { finishTutorial(); toast('Tutorial skipped. How to play is in the menu.', 2600); };
 
 // ---- install ----
 // Chrome and Android fire beforeinstallprompt; iPhone Safari never does, so the app build shows Share-sheet steps there.
@@ -1000,8 +1097,14 @@ function start(data) {
     submitScore(); // the scoreboard row starts over with the game
     setTimeout(() => toast('New construction word set: starting from level 1', 3200), 600);
   }
-  if (!S.seen) { introShown = true; $('startSheet').hidden = false; } // checkDone runs when it's dismissed
-  else checkDone();
+  if (!S.seen && tutorialActive()) {
+    // new players learn on level 1's guided round instead of the how-to-play screen (still in the menu)
+    S.seen = true; introShown = true; save();
+  } else if (!S.seen) {
+    introShown = true; $('startSheet').hidden = false; // checkDone runs when it's dismissed
+    return;
+  }
+  checkDone();
 }
 try { window.claude?.hot?.snapshot?.(() => ({ S })); } catch (_) {}
 // on resize, re-lay out the board; only redraw the thread mid-drag so the word feedback isn't wiped
