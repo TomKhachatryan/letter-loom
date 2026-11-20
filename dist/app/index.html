@@ -157,8 +157,7 @@ button.chip { cursor: pointer; }
   font: 700 .7rem var(--body); border-radius: 999px; padding: 2px 6px; font-variant-numeric: tabular-nums;
 }
 .tool:disabled { opacity: .45; }
-#muteBtn .sound-off, #muteBtn[aria-pressed="true"] .sound-on { display: none; }
-#muteBtn[aria-pressed="true"] .sound-off { display: block; }
+#muteBtn[aria-pressed="false"] .sound-off, #muteBtn[aria-pressed="true"] .sound-on { display: none; }
 #muteBtn[aria-pressed="true"] { color: var(--muted); }
 button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
@@ -243,8 +242,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
   <div class="dock">
     <div class="toast" id="toast"></div>
     <button type="button" class="tool left" id="muteBtn" aria-pressed="false" aria-label="Mute sounds">
-      <svg class="sound-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-      <svg class="sound-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6M22 9l-6 6"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="sound-on" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/><path class="sound-off" d="m16 9 6 6M22 9l-6 6"/></svg>
     </button>
     <div class="wheel" id="wheel" role="application" aria-label="Letter wheel. Drag across letters to spell a word.">
       <button type="button" class="center-shuffle" id="shuffleBtn" aria-label="Shuffle letters">
@@ -373,6 +371,13 @@ function prune() {
 }
 const allFound = () => LV.words.every(p => S.found.includes(p.w));
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+// small per-device preferences (language, mute, one-time tips), stored beside the game save as KEY-name
+function pref(name, fallback = null) {
+  try { const v = localStorage.getItem(`${KEY}-${name}`); return v === null ? fallback : v; } catch (_) { return fallback; }
+}
+function setPref(name, value) {
+  try { localStorage.setItem(`${KEY}-${name}`, value); return true; } catch (_) { return false; }
+}
 
 function cellsOf(p) {
   const out = [];
@@ -658,9 +663,8 @@ new MutationObserver(syncInert).observe(document.body, { subtree: true, attribut
 // Grid words carry bundled translations in each language; anything else gets a Google Translate link.
 // The chosen language is a per-device preference, kept apart from game progress.
 const LANGS = { ru: 'Russian', es: 'Spanish', fr: 'French' };
-const LANG_KEY = KEY + '-lang';
-let lang = 'ru';
-try { const l = localStorage.getItem(LANG_KEY); if (LANGS[l]) lang = l; } catch (_) {}
+let lang = pref('lang', 'ru');
+if (!LANGS[lang]) lang = 'ru';
 let shownWords = [];
 const wordButton = w => `<button type="button" data-word="${esc(w)}" aria-label="${esc(w)}: show translation">${esc(w)}</button>`;
 const lookupUrl = w => `https://translate.google.com/?sl=en&tl=${lang}&op=translate&text=${encodeURIComponent(w.toLowerCase())}`;
@@ -681,7 +685,7 @@ $('langs').addEventListener('click', e => {
   const b = e.target.closest('button[data-lang]');
   if (!b || b.dataset.lang === lang) return;
   lang = b.dataset.lang;
-  try { localStorage.setItem(LANG_KEY, lang); } catch (_) {}
+  setPref('lang', lang);
   showWords(shownWords);
 });
 $('wordClose').onclick = () => { $('wordSheet').hidden = true; };
@@ -698,11 +702,7 @@ for (const id of ['doneWords', 'bonusWords']) {
 // tell returning players about it once, after their first new word; new players already read it on the start screen
 let introShown = false;
 function translateTip() {
-  try {
-    if (localStorage.getItem(KEY + '-tip')) return;
-    localStorage.setItem(KEY + '-tip', '1');
-  } catch (_) { return; }
-  if (introShown) return;
+  if (pref('tip') || !setPref('tip', '1') || introShown) return;
   // wait for any toast already on screen (e.g. "Bonus word!") to finish instead of cutting it off
   const show = () => $('toast').classList.contains('show') ? setTimeout(show, 600) : toast('Tap a word in the grid to translate it', 3000);
   setTimeout(show, 900);
@@ -742,18 +742,12 @@ function spool() {
 
 // ---- sound & haptics (start only after the player touches the wheel) ----
 // mute is a per-device preference, kept apart from game progress; it silences sound, not vibration
-const MUTE_KEY = KEY + '-muted';
-let muted = false;
-try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (_) {}
-function renderMute() {
-  $('muteBtn').setAttribute('aria-pressed', String(muted));
-  $('muteBtn').setAttribute('aria-label', muted ? 'Turn sounds on' : 'Mute sounds');
-}
-renderMute();
+let muted = pref('muted') === '1';
+$('muteBtn').setAttribute('aria-pressed', muted);
 $('muteBtn').onclick = () => {
   muted = !muted;
-  try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {}
-  renderMute();
+  setPref('muted', muted ? '1' : '0');
+  $('muteBtn').setAttribute('aria-pressed', muted);
   toast(muted ? 'Sounds off' : 'Sounds on');
 };
 
