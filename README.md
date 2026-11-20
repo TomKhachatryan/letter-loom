@@ -2,7 +2,7 @@
 
 A swipe-to-spell crossword game for phones. Drag across the letter wheel to spell words and fill the grid. There are 32 levels, from 3-letter wheels up to 7-letter wheels, plus bonus words drawn from a full dictionary.
 
-Play it: https://claude.ai/artifact/VcMW5pSRt5heZtdz6jWTXC (private Claude artifact; share it from the page's Share menu)
+Play it: https://tomkhachatryan.github.io/letter-loom/ (open it on your phone to add it to your home screen)
 
 ## Layout
 
@@ -27,13 +27,14 @@ Needs Node 18 or newer. There are no dependencies.
 npm run build        # rebuild dist/letter-loom.html and dist/app/ from src + levels.json
 npm run dictionary   # download the ENABLE word list into words/
 npm run levels       # regenerate levels.json (layouts, then bonus words); needs the word list
+npm run deploy       # build, then publish dist/app/ to GitHub Pages
 ```
 
 After editing the word lists in `levels/layout.js`, run `npm run levels` and then `npm run build`.
 
 ## Installing on a phone
 
-The Claude artifact can't be installed, because it runs inside claude.ai. Host `dist/app/` on any HTTPS site, then:
+The Claude artifact can't be installed, because it runs inside claude.ai. `npm run deploy` rebuilds the game, pushes `main`, and publishes `dist/app/` to the `gh-pages` branch (commit your changes, including `dist/`, first), which GitHub Pages serves. It works on any other HTTPS host too. On a phone:
 
 - **Android (Chrome):** open the site and tap the install button in the game's header, or use the browser menu's *Install app*.
 - **iPhone (Safari):** tap the install button for the steps: Share → *Add to Home Screen*.

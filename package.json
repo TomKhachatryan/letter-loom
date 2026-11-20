@@ -5,6 +5,7 @@
   "scripts": {
     "dictionary": "sh scripts/fetch-dictionary.sh",
     "levels": "node levels/layout.js && node levels/bonus.js",
-    "build": "node build.js"
+    "build": "node build.js",
+    "deploy": "sh scripts/deploy.sh"
   }
 }
