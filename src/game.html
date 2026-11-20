@@ -56,6 +56,12 @@ header { display: flex; align-items: center; justify-content: space-between; gap
   font: 600 .9rem var(--body); font-variant-numeric: tabular-nums;
 }
 button.chip { cursor: pointer; }
+/* bonus meter: the chip fills left to right in saffron as bonus words come in */
+.chip.meter {
+  background: linear-gradient(90deg, rgba(242,182,64,.38) var(--fill, 0%), var(--cloth-deep) var(--fill, 0%));
+  transition: background .3s;
+}
+.chip.meter svg { color: var(--saffron); }
 .chip svg { width: 18px; height: 18px; flex: none; }
 .chip.icon-only { padding: 6px 8px; }
 .steps { margin: 0; padding-left: 1.4em; text-align: left; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
@@ -141,6 +147,8 @@ button.chip { cursor: pointer; }
   font: 700 .7rem var(--body); border-radius: 999px; padding: 2px 6px; font-variant-numeric: tabular-nums;
 }
 .tool:disabled { opacity: .45; }
+.tool .cost.free { background: var(--madder); color: var(--linen); }
+.tool.pulse { animation: pulse .5s ease; }
 #muteBtn[aria-pressed="false"] .sound-off, #muteBtn[aria-pressed="true"] .sound-on { display: none; }
 #muteBtn[aria-pressed="true"] { color: var(--muted); }
 button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
@@ -208,7 +216,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
       <button class="chip icon-only" id="installBtn" aria-label="Install Letter Loom on your home screen" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
       </button>
-      <button class="chip" id="bonusBtn" aria-label="Bonus words found">
+      <button class="chip meter" id="bonusBtn" aria-label="Bonus meter">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>
         <span id="bonusCount">0</span>
       </button>
@@ -256,7 +264,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
   <div class="card">
     <div class="eyebrow">Bonus words</div>
     <h2>Extra words you found</h2>
-    <p id="bonusIntro">Any real word of three or more letters that isn't in the grid earns 3 spools.</p>
+    <p id="bonusIntro">Common words that aren't in the grid fill the bonus meter. Every 10 earns a free hint.</p>
     <div class="words" id="bonusWords"></div>
     <button class="primary" id="bonusClose">Back to the puzzle</button>
   </div>
@@ -281,7 +289,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <h2>Drag across the letters to spell words</h2>
     <p>Every word you find fills its row or column in the grid. Fill the whole grid to finish the level.</p>
     <p>Don't know a word? Tap it in the grid to see it in Russian, Spanish or French.</p>
-    <p>Stuck? Shuffle the wheel, or spend <span id="introCost">30</span> spools to reveal a letter.</p>
+    <p>Stuck? Shuffle the wheel, or spend <span id="introCost">30</span> spools to reveal a letter. Extra words that aren't in the grid fill the bonus meter, and a full meter gives a free hint.</p>
     <button class="primary" id="startBtn">Start weaving</button>
   </div>
 </div>
@@ -302,7 +310,8 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 <script>
 const LEVELS = /*LEVELS*/[];
 const TRANSLATIONS = /*TRANSLATIONS*/{};
-const HINT_COST = 30, LEVEL_REWARD = 15, BONUS_REWARD = 3;
+const HINT_COST = 30, LEVEL_REWARD = 15;
+const METER_SIZE = 10; // bonus words needed to fill the meter, which pays out one free hint
 const KEY = 'letter-loom-v1';
 const $ = id => document.getElementById(id);
 
@@ -315,12 +324,19 @@ let sel = [], dragging = false, ptr = null;
 
 // v2 saves identify their level by levelId; saves without v predate that and need the one-time shift in migrate()
 const SAVE_VERSION = 2;
-function fresh(level = 0, coins = 100, seen = false) {
-  return { v: SAVE_VERSION, level, coins, found: [], bonus: [], hints: [], seen, completed: false };
+// a new level's state; coins, the bonus meter and free hints carry over from `prev`
+function fresh(level = 0, prev = {}) {
+  return {
+    v: SAVE_VERSION, level, found: [], bonus: [], hints: [], completed: false,
+    coins: prev.coins ?? 100, meter: prev.meter ?? 0, freeHints: prev.freeHints ?? 0, seen: prev.seen ?? false,
+  };
 }
-// fill in list fields a save may lack, so an older save isn't thrown away for missing one
+// fill in fields a save may lack, so an older save isn't thrown away for missing one
 function normalize(s) {
-  if (s && typeof s === 'object') for (const k of ['found', 'bonus', 'hints']) if (s[k] === undefined) s[k] = [];
+  if (s && typeof s === 'object') {
+    for (const k of ['found', 'bonus', 'hints']) if (s[k] === undefined) s[k] = [];
+    for (const k of ['meter', 'freeHints']) if (s[k] === undefined) s[k] = 0;
+  }
   return s;
 }
 // accept saved state only if it has the shape the game expects
@@ -329,6 +345,7 @@ function valid(s) {
   return !!s && typeof s === 'object'
     && Number.isInteger(s.level) && s.level >= 0
     && Number.isFinite(s.coins) && s.coins >= 0
+    && Number.isInteger(s.meter) && s.meter >= 0 && Number.isInteger(s.freeHints) && s.freeHints >= 0
     && strings(s.found) && strings(s.bonus) && strings(s.hints);
 }
 function load() {
@@ -558,8 +575,15 @@ function submit(word) {
   }
   if (word.length >= 3 && LV.bonus.includes(word)) {
     if (S.bonus.includes(word)) { flash('dupe'); toast('Bonus word already found'); return; }
-    S.bonus.push(word); S.coins += BONUS_REWARD;
-    flash('bonus'); toast(`Bonus word! +${BONUS_REWARD} spools`); chime(false);
+    S.bonus.push(word);
+    flash('bonus'); chime(false);
+    if (++S.meter >= METER_SIZE) {
+      S.meter = 0; S.freeHints++;
+      toast('Bonus meter full! Free hint earned', 2200);
+      $('hintBtn').classList.remove('pulse'); void $('hintBtn').offsetWidth; $('hintBtn').classList.add('pulse');
+    } else {
+      toast(`Bonus word! ${S.meter}/${METER_SIZE} toward a free hint`);
+    }
     save(); updateHud();
     return;
   }
@@ -604,7 +628,7 @@ function showDone() {
 }
 $('nextBtn').onclick = () => {
   const next = (S.level + 1) % LEVELS.length;
-  S = fresh(next, S.coins, true);
+  S = fresh(next, S);
   $('doneSheet').hidden = true;
   buildLevel(); // sets S.levelId, so save after it
   save();
@@ -613,13 +637,14 @@ $('nextBtn').onclick = () => {
 $('shuffleBtn').onclick = () => { if (modalOpen()) return; shuffleOrder(false); $('shuffleBtn').classList.toggle('spin'); };
 $('hintBtn').onclick = () => {
   if (modalOpen()) return;
-  if (S.coins < HINT_COST) { toast(`You need ${HINT_COST} spools for a hint`); return; }
+  if (!S.freeHints && S.coins < HINT_COST) { toast(`You need ${HINT_COST} spools or a full bonus meter for a hint`, 2200); return; }
   // reveal the first hidden letter of the shortest unfinished word
   const open = LV.words.filter(p => !S.found.includes(p.w)).sort((a, b) => a.w.length - b.w.length);
   for (const p of open) {
     const k = cellsOf(p).find(k => { const c = cells.get(k).el.classList; return !c.contains('on') && !c.contains('hinted'); });
     if (k) {
-      S.hints.push(k); S.coins -= HINT_COST;
+      S.hints.push(k);
+      if (S.freeHints) S.freeHints--; else S.coins -= HINT_COST; // free hints from the bonus meter are used first
       const el = cells.get(k).el; el.classList.add('hinted', 'pulse');
       autoComplete(); save(); updateHud(); checkDone();
       return;
@@ -628,9 +653,10 @@ $('hintBtn').onclick = () => {
 };
 $('bonusBtn').onclick = () => {
   if (modalOpen()) return;
-  $('bonusIntro').textContent = LV.bonus.length
-    ? `Any real word of three or more letters that isn't in the grid earns ${BONUS_REWARD} spools.`
-    : 'These letters make no extra words beyond the grid.';
+  const left = METER_SIZE - S.meter;
+  $('bonusIntro').textContent =
+    `Common words of three or more letters that aren't in the grid fill the bonus meter. Every ${METER_SIZE} earns a free hint` +
+    ` (${left} more to go).` + (LV.bonus.length ? '' : ' These letters make no extra words, so try the next level.');
   $('bonusWords').innerHTML = S.bonus.length ? [...S.bonus].sort().map(wordButton).join('') : '<p>None found yet.</p>';
   $('bonusSheet').hidden = false;
 };
@@ -715,9 +741,13 @@ $('installClose').onclick = () => { $('installSheet').hidden = true; };
 
 function updateHud() {
   $('coins').textContent = S.coins;
-  $('bonusCount').textContent = S.bonus.length;
-  $('hintBtn').disabled = S.coins < HINT_COST;
-  $('hintCost').textContent = HINT_COST;
+  // the bonus chip is the meter: its fill shows progress toward the next free hint
+  $('bonusCount').textContent = `${S.meter}/${METER_SIZE}`;
+  $('bonusBtn').style.setProperty('--fill', `${(S.meter / METER_SIZE) * 100}%`);
+  $('bonusBtn').setAttribute('aria-label', `Bonus meter: ${S.meter} of ${METER_SIZE} words toward a free hint`);
+  $('hintBtn').disabled = !S.freeHints && S.coins < HINT_COST;
+  $('hintCost').textContent = S.freeHints ? (S.freeHints > 1 ? `FREE ×${S.freeHints}` : 'FREE') : HINT_COST;
+  $('hintCost').classList.toggle('free', S.freeHints > 0);
   $('introCost').textContent = HINT_COST;
 }
 function spool() {
@@ -756,7 +786,7 @@ function buzz() { tone(150, 0.18, 0.05, 'sawtooth'); try { navigator.vibrate?.([
 function start(data) {
   S = (data && valid(normalize(data.S)) && data.S) || load() || fresh();
   migrate(S);
-  if (S.level >= LEVELS.length) S = fresh(0, S.coins, true);
+  if (S.level >= LEVELS.length) S = fresh(0, S);
   buildLevel();
   save();
   if (!S.seen) { introShown = true; $('startSheet').hidden = false; } // checkDone runs when it's dismissed
