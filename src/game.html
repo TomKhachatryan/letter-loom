@@ -412,7 +412,8 @@ let cells;        // Map "x,y" -> {el, ch}
 let order = [];   // wheel order: indexes into LV.l
 let letterEls = [];
 let sel = [], dragging = false, ptr = null;
-let tutStep = null, tutTranslated = false; // tutorial progress on level 1 (see the tutorial section)
+// tutorial progress on level 1 (see the tutorial section); tutDone also covers devices whose storage is blocked
+let tutStep = null, tutTranslated = false, tutDone = false, tutJustFinished = false, ghostKey = '';
 
 // v2 saves identify their level by levelId
 const SAVE_VERSION = 2;
@@ -715,7 +716,7 @@ function autoComplete() {
 
 function checkDone() {
   if (!allFound()) return;
-  if (S.level === 0 && tutorialActive()) finishTutorial();
+  if (S.level === 0 && tutorialActive()) { tutJustFinished = true; finishTutorial(); }
   // pay the reward once per level, even if the page is reloaded on the done screen
   if (!S.completed) {
     S.completed = true;
@@ -728,8 +729,9 @@ function checkDone() {
 }
 function showDone() {
   const last = S.level === LEVELS.length - 1;
-  $('doneEyebrow').textContent = S.level === 0 ? 'Tutorial complete' : `Level ${S.level + 1} complete`;
-  $('doneTitle').textContent = S.level === 0 ? "You're ready to build"
+  // only the run that actually finished the guided tutorial gets the tutorial wording
+  $('doneEyebrow').textContent = tutJustFinished ? 'Tutorial complete' : `Level ${S.level + 1} complete`;
+  $('doneTitle').textContent = tutJustFinished ? "You're ready to build"
     : last ? 'You finished every level' : ['Nicely woven', 'Tight weave', 'Not a loose thread', 'Clean pattern'][S.level % 4];
   $('doneWords').innerHTML = LV.words.map(p => p.w).sort((a, b) => b.length - a.length || a.localeCompare(b)).map(wordButton).join('');
   $('doneReward').innerHTML = `${spool()} +${LEVEL_REWARD} spools` + (S.bonus.length ? ` · ${S.bonus.length} bonus word${S.bonus.length > 1 ? 's' : ''}` : '');
@@ -740,6 +742,7 @@ function showDone() {
 $('nextBtn').onclick = () => {
   const next = (S.level + 1) % LEVELS.length;
   S = fresh(next, S);
+  tutJustFinished = false;
   $('doneSheet').hidden = true;
   buildLevel(); // sets S.levelId, so save after it
   save();
@@ -811,7 +814,12 @@ $('langs').addEventListener('click', e => {
 });
 $('wordClose').onclick = () => {
   $('wordSheet').hidden = true;
-  if (tutStep === 'translate') { tutTranslated = true; updateTutorial(); }
+  // the translate step is done only once the player has actually looked up TAP
+  if (tutStep === 'translate' && shownWords.includes(TUT.word)) {
+    tutTranslated = true;
+    setPref('tutorial', 'translated'); // a reload doesn't ask again
+    updateTutorial();
+  }
 };
 // tap a found word in the grid; a crossing cell shows both words
 $('grid').addEventListener('click', e => {
@@ -826,6 +834,7 @@ for (const id of ['doneWords', 'bonusWords']) {
 // tell returning players about it once, after their first new word; new players already read it on the start screen
 let introShown = false;
 function translateTip() {
+  if (tutorialActive()) return; // the tutorial's coach card already teaches this; tip again on a later level
   if (pref('tip') || !setPref('tip', '1') || introShown) return;
   // wait for any toast already on screen (e.g. "Bonus word!") to finish instead of cutting it off
   const show = () => $('toast').classList.contains('show') ? setTimeout(show, 600) : toast('Tap a word in the grid to translate it', 3000);
@@ -952,7 +961,7 @@ $('resetNo').onclick = () => { $('resetConfirm').hidden = true; $('menuMain').hi
 $('resetYes').onclick = () => {
   S = fresh(0, { seen: true });
   setPref('tutorial', ''); // starting over replays the tutorial
-  tutTranslated = false;
+  tutTranslated = false; tutDone = false; tutJustFinished = false;
   $('menuSheet').hidden = true;
   buildLevel();
   save();
@@ -965,8 +974,9 @@ $('resetYes').onclick = () => {
 // Runs on level 1 until it's completed or skipped; starting over replays it.
 const TUT = { word: 'TAP', bonus: 'PART' };
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// pref 'tutorial': '' (not started), 'translated' (past the translate step), 'done' (finished or skipped)
 function tutorialActive() {
-  return !!S && S.level === 0 && pref('tutorial') !== 'done' && LEVELS[0].words.some(p => p.w === TUT.word);
+  return !!S && S.level === 0 && !tutDone && pref('tutorial') !== 'done' && LEVELS[0].words.some(p => p.w === TUT.word);
 }
 // wheel letter indexes that spell TUT.word
 function tutPath() {
@@ -976,7 +986,8 @@ function tutPath() {
 function updateTutorial() {
   let step = null;
   if (LV && tutorialActive() && !allFound()) {
-    step = !S.found.includes(TUT.word) ? 'swipe' : !tutTranslated ? 'translate' : 'rest';
+    const translated = tutTranslated || pref('tutorial') === 'translated';
+    step = !S.found.includes(TUT.word) ? 'swipe' : !translated ? 'translate' : 'rest';
   }
   const changed = step !== tutStep || step === 'rest';
   tutStep = step;
@@ -1001,9 +1012,17 @@ function updateTutorial() {
 // a ghost fingertip that traces the path over the wheel, looping
 function runGhost() {
   const g = $('ghost');
-  g.getAnimations?.().forEach(a => a.cancel());
-  if (tutStep !== 'swipe' || reduceMotion || !LV || !g.animate) { g.hidden = true; return; }
+  if (tutStep !== 'swipe' || reduceMotion || !LV || !g.animate) {
+    g.getAnimations?.().forEach(a => a.cancel());
+    g.hidden = true; ghostKey = '';
+    return;
+  }
   const pts = tutPath().map(i => centerOf(slotOf(i)));
+  // restart only when the letters actually moved (shuffle, wheel resize), not on every layout pass
+  const key = pts.map(p => `${Math.round(p.x)},${Math.round(p.y)}`).join(' ');
+  if (key === ghostKey && g.getAnimations().length) return;
+  ghostKey = key;
+  g.getAnimations().forEach(a => a.cancel());
   const at = (p, s = 1) => `translate(${p.x}px, ${p.y}px) scale(${s})`;
   const last = pts[pts.length - 1];
   g.hidden = false;
@@ -1015,7 +1034,7 @@ function runGhost() {
     { transform: at(last, .6), opacity: 0, offset: 1 },
   ], { duration: 2800, iterations: Infinity, easing: 'ease-in-out' });
 }
-function finishTutorial() { setPref('tutorial', 'done'); updateTutorial(); }
+function finishTutorial() { tutDone = true; setPref('tutorial', 'done'); updateTutorial(); }
 $('coachSkip').onclick = () => { finishTutorial(); toast('Tutorial skipped. How to play is in the menu.', 2600); };
 
 // ---- install ----
