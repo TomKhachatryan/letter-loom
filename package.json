@@ -1,0 +1,10 @@
+{
+  "name": "letter-loom",
+  "private": true,
+  "description": "A swipe-to-spell crossword game for phones.",
+  "scripts": {
+    "dictionary": "sh scripts/fetch-dictionary.sh",
+    "levels": "node levels/layout.js && node levels/bonus.js",
+    "build": "node build.js"
+  }
+}
