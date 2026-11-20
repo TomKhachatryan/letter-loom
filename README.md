@@ -1,6 +1,6 @@
 # Letter Loom
 
-A swipe-to-spell crossword game for phones. Drag across the letter wheel to spell words and fill the grid. There are 18 levels, plus bonus words drawn from a full dictionary.
+A swipe-to-spell crossword game for phones. Drag across the letter wheel to spell words and fill the grid. There are 28 levels, from 3-letter wheels up to 7-letter wheels, plus bonus words drawn from a full dictionary.
 
 Play it: https://claude.ai/artifact/VcMW5pSRt5heZtdz6jWTXC (private Claude artifact; share it from the page's Share menu)
 
