@@ -1,6 +1,6 @@
 // Service worker for the installed app: keeps Letter Loom playable offline.
 // build.js fills in the version, so every build replaces the old cache.
-const CACHE = 'letter-loom-18c62a0306';
+const CACHE = 'letter-loom-b7d9c62e46';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
