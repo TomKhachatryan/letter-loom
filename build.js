@@ -11,13 +11,15 @@ const read = (...p) => fs.readFileSync(path.join(root, ...p), 'utf8');
 
 const src = read('src', 'game.html');
 const levels = read('levels', 'levels.json').trim();
-const translations = JSON.parse(read('levels', 'translations.ru.json'));
+const LANGS = ['ru', 'es', 'fr'];
+const translations = Object.fromEntries(LANGS.map(l => [l, JSON.parse(read('levels', `translations.${l}.json`))]));
 for (const ph of ['/*LEVELS*/[]', '/*TRANSLATIONS*/{}']) {
   if (!src.includes(ph)) throw new Error(`src/game.html is missing the ${ph} placeholder`);
 }
-// every grid word needs a translation, so a new level can't ship without them
-const untranslated = [...new Set(JSON.parse(levels).flatMap(l => l.words.map(p => p.w)))].filter(w => !translations[w]);
-if (untranslated.length) throw new Error(`Add these words to levels/translations.ru.json: ${untranslated.join(', ')}`);
+// every grid word needs a translation in every language, so a new level can't ship without them
+const gridWords = [...new Set(JSON.parse(levels).flatMap(l => l.words.map(p => p.w)))];
+const gaps = LANGS.map(l => [l, gridWords.filter(w => !translations[l][w])]).filter(([, ws]) => ws.length);
+if (gaps.length) throw new Error(gaps.map(([l, ws]) => `Add these words to levels/translations.${l}.json: ${ws.join(', ')}`).join('\n'));
 const out = src
   .replace('/*LEVELS*/[]', () => levels)
   .replace('/*TRANSLATIONS*/{}', () => JSON.stringify(translations));

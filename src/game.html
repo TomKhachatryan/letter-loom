@@ -177,6 +177,12 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 .entry p { margin: 4px 0 0; font-size: 1.1rem; line-height: 1.4; }
 .entry .none { font-size: .95rem; color: #6b6380; }
 .lookup { color: var(--ink); font-weight: 600; font-size: .9rem; }
+.langs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.langs button {
+  font: 600 .85rem var(--body); color: var(--ink); background: none; cursor: pointer;
+  border: 1px solid rgba(28,33,71,.25); border-radius: 999px; padding: 6px 12px;
+}
+.langs button[aria-pressed="true"] { background: var(--ink); color: var(--linen); border-color: var(--ink); }
 .reward { display: inline-flex; align-items: center; gap: 6px; justify-content: center; font: 700 1rem var(--body); }
 .reward svg { width: 20px; height: 20px; }
 .primary {
@@ -235,7 +241,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <div class="eyebrow" id="doneEyebrow">Level 1 complete</div>
     <h2 id="doneTitle">Nicely woven</h2>
     <div class="words" id="doneWords"></div>
-    <p class="hint-line">Tap a word to see it in Russian.</p>
+    <p class="hint-line">Tap a word to translate it.</p>
     <div class="reward" id="doneReward"></div>
     <button class="primary" id="nextBtn">Next level</button>
   </div>
@@ -269,7 +275,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <div class="eyebrow">How to play</div>
     <h2>Drag across the letters to spell words</h2>
     <p>Every word you find fills its row or column in the grid. Fill the whole grid to finish the level.</p>
-    <p>Don't know a word? Tap it in the grid to see it in Russian.</p>
+    <p>Don't know a word? Tap it in the grid to see it in Russian, Spanish or French.</p>
     <p>Stuck? Shuffle the wheel, or spend <span id="introCost">30</span> spools to reveal a letter.</p>
     <button class="primary" id="startBtn">Start weaving</button>
   </div>
@@ -277,7 +283,12 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
 <div class="sheet" id="wordSheet" hidden>
   <div class="card">
-    <div class="eyebrow">English → Russian</div>
+    <div class="eyebrow" id="wordLang">English → Russian</div>
+    <div class="langs" id="langs" role="group" aria-label="Translation language">
+      <button type="button" data-lang="ru" lang="ru" aria-pressed="true">Русский</button>
+      <button type="button" data-lang="es" lang="es" aria-pressed="false">Español</button>
+      <button type="button" data-lang="fr" lang="fr" aria-pressed="false">Français</button>
+    </div>
     <div class="entries" id="wordEntries"></div>
     <button class="primary" id="wordClose">Back</button>
   </div>
@@ -605,20 +616,35 @@ $('bonusClose').onclick = () => { $('bonusSheet').hidden = true; };
 $('startBtn').onclick = () => { $('startSheet').hidden = true; S.seen = true; save(); };
 
 // ---- translations ----
-// Grid words carry a bundled Russian translation; anything else gets a Google Translate link.
+// Grid words carry bundled translations in each language; anything else gets a Google Translate link.
+// The chosen language is a per-device preference, kept apart from game progress.
+const LANGS = { ru: 'Russian', es: 'Spanish', fr: 'French' };
+const LANG_KEY = KEY + '-lang';
+let lang = 'ru';
+try { const l = localStorage.getItem(LANG_KEY); if (LANGS[l]) lang = l; } catch (_) {}
+let shownWords = [];
 const wordButton = w => `<button type="button" data-word="${w}" aria-label="${w}: show translation">${w}</button>`;
-const lookupUrl = w => `https://translate.google.com/?sl=en&tl=ru&op=translate&text=${encodeURIComponent(w.toLowerCase())}`;
+const lookupUrl = w => `https://translate.google.com/?sl=en&tl=${lang}&op=translate&text=${encodeURIComponent(w.toLowerCase())}`;
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function showWords(words) {
+  shownWords = words;
+  $('wordLang').textContent = `English → ${LANGS[lang]}`;
+  for (const b of document.querySelectorAll('#langs button')) b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
   $('wordEntries').innerHTML = words.map(w => {
-    const tr = TRANSLATIONS[w];
+    const tr = (TRANSLATIONS[lang] || {})[w];
     return `<div class="entry"><h3>${w}</h3>` +
-      (tr ? `<p lang="ru">${esc(tr)}</p>` : `<p class="none">No built-in translation for this word yet.</p>`) +
+      (tr ? `<p lang="${lang}">${esc(tr)}</p>` : `<p class="none">No built-in translation for this word yet.</p>`) +
       `<p><a class="lookup" href="${lookupUrl(w)}" target="_blank" rel="noopener">Look it up in Google Translate ↗</a></p></div>`;
   }).join('');
-  $('wordSheet').hidden = false;
-  $('wordClose').focus();
+  if ($('wordSheet').hidden) { $('wordSheet').hidden = false; $('wordClose').focus(); }
 }
+$('langs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-lang]');
+  if (!b || b.dataset.lang === lang) return;
+  lang = b.dataset.lang;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (_) {}
+  showWords(shownWords);
+});
 $('wordClose').onclick = () => { $('wordSheet').hidden = true; };
 // tap a found word in the grid; a crossing cell shows both words
 $('grid').addEventListener('click', e => {
@@ -636,7 +662,7 @@ function translateTip() {
     if (localStorage.getItem(KEY + '-tip')) return;
     localStorage.setItem(KEY + '-tip', '1');
   } catch (_) { return; }
-  setTimeout(() => toast('Tap a word in the grid to see it in Russian', 3000), 900);
+  setTimeout(() => toast('Tap a word in the grid to translate it', 3000), 900);
 }
 
 // ---- install ----
