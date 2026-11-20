@@ -63,6 +63,8 @@ body {
 }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .brand { font-family: var(--display); font-weight: 800; font-size: 1.05rem; letter-spacing: .01em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.brand { background: none; border: 0; padding: 4px 6px 4px 0; color: var(--linen); text-align: left; cursor: pointer; border-radius: 8px; }
+.brand .caret { width: 14px; height: 14px; vertical-align: -1px; color: var(--muted); }
 .brand small { display: block; font-family: var(--body); font-weight: 600; font-size: .72rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
 .chips { display: flex; gap: 8px; }
 .chip {
@@ -211,6 +213,13 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 .langs button[aria-pressed="true"] { background: var(--ink); color: var(--linen); border-color: var(--ink); }
 .reward { display: inline-flex; align-items: center; gap: 6px; justify-content: center; font: 700 1rem var(--body); }
 .reward svg { width: 20px; height: 20px; }
+.menu-actions { display: flex; flex-direction: column; gap: 10px; }
+.secondary, .danger {
+  font: 700 1rem var(--display); border-radius: 12px; padding: 13px; cursor: pointer;
+  background: none; color: var(--ink); border: 1.5px solid rgba(28,33,71,.3);
+}
+.danger { color: #a3301b; border-color: rgba(163,48,27,.45); }
+.danger.solid { background: #a3301b; color: var(--linen); border-color: #a3301b; }
 .primary {
   font: 700 1.05rem var(--display); border: 0; border-radius: 12px; padding: 14px;
   background: var(--madder); color: var(--linen); cursor: pointer; box-shadow: 0 3px 0 #9c3a24;
@@ -244,7 +253,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
 <div class="app" id="app">
   <header>
-    <div class="brand">Letter Loom<small id="lvlLabel">Level 1 of 18</small></div>
+    <button type="button" class="brand" id="menuBtn" aria-label="Game menu">Letter Loom <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg><small id="lvlLabel">Level 1 of 32</small></button>
     <div class="chips">
       <button class="chip icon-only" id="installBtn" aria-label="Install Letter Loom on your home screen" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
@@ -344,6 +353,24 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <ol class="board" id="boardList"></ol>
     <button type="button" class="ghost" id="renameBtn" hidden>Change my name</button>
     <button class="primary" id="boardClose">Back to the puzzle</button>
+  </div>
+</div>
+
+<div class="sheet" id="menuSheet" hidden>
+  <div class="card">
+    <div class="eyebrow">Letter Loom</div>
+    <div class="menu-actions" id="menuMain">
+      <h2>Game menu</h2>
+      <button type="button" class="secondary" id="menuHelp">How to play</button>
+      <button type="button" class="danger" id="menuReset">Start over from level 1</button>
+      <button type="button" class="ghost" id="menuClose">Back to the puzzle</button>
+    </div>
+    <div class="menu-actions" id="resetConfirm" hidden>
+      <h2>Start over from level 1?</h2>
+      <p id="resetText">This clears your level, spools, bonus meter and words found. It can't be undone.</p>
+      <button type="button" class="danger solid" id="resetYes">Yes, start over</button>
+      <button type="button" class="ghost" id="resetNo">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -882,6 +909,33 @@ $('joinForm').addEventListener('submit', async e => {
     $('joinBtn').disabled = false;
   }
 });
+
+// ---- game menu: how to play, start over ----
+// Starting over keeps per-device preferences (language, sound) and the scoreboard identity,
+// so the player's existing scoreboard row drops back to zero instead of a second row appearing.
+$('menuBtn').onclick = () => {
+  if (modalOpen()) return;
+  $('menuMain').hidden = false; $('resetConfirm').hidden = true;
+  $('menuSheet').hidden = false;
+  $('menuHelp').focus();
+};
+$('menuClose').onclick = () => { $('menuSheet').hidden = true; };
+$('menuHelp').onclick = () => { $('menuSheet').hidden = true; $('startSheet').hidden = false; $('startBtn').focus(); };
+$('menuReset').onclick = () => {
+  $('resetText').textContent = "This clears your level, spools, bonus meter and words found. It can't be undone." +
+    (board && player().name ? ' Your scoreboard name stays, and your score there goes back to zero.' : '');
+  $('menuMain').hidden = true; $('resetConfirm').hidden = false;
+  $('resetNo').focus();
+};
+$('resetNo').onclick = () => { $('resetConfirm').hidden = true; $('menuMain').hidden = false; $('menuReset').focus(); };
+$('resetYes').onclick = () => {
+  S = fresh(0, { seen: true });
+  $('menuSheet').hidden = true;
+  buildLevel();
+  save();
+  submitScore();
+  toast('Started over from level 1');
+};
 
 // ---- install ----
 // Chrome and Android fire beforeinstallprompt; iPhone Safari never does, so the app build shows Share-sheet steps there.
