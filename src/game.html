@@ -397,6 +397,20 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
   </div>
 </div>
 
+<div class="sheet" id="nameSheet" hidden>
+  <div class="card">
+    <div class="eyebrow">Welcome to Letter Loom</div>
+    <h2>What should we call you?</h2>
+    <p>Your name goes on the shared scoreboard, so everyone playing can see how far you've got.</p>
+    <form class="join" id="nameForm">
+      <label for="welcomeName">Your name (up to 24 characters)</label>
+      <input id="welcomeName" type="text" maxlength="24" autocomplete="nickname" enterkeyhint="go" required>
+      <button class="primary" type="submit" id="nameBtn">Start playing</button>
+    </form>
+    <p class="hint-line" id="nameStatus" aria-live="polite"></p>
+  </div>
+</div>
+
 <script>
 const LEVELS = /*LEVELS*/[];
 const SCOREBOARD = /*SCOREBOARD*/null; // {url, key} of the Supabase project; filled in only for the installed app
@@ -476,10 +490,14 @@ function prune() {
 const allFound = () => LV.words.every(p => S.found.includes(p.w));
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 // small per-device preferences (language, mute, one-time tips), stored beside the game save as KEY-name
+// values are also kept in memory, so they hold for this visit even when storage is blocked
+const memPrefs = {};
 function pref(name, fallback = null) {
+  if (name in memPrefs) return memPrefs[name];
   try { const v = localStorage.getItem(`${KEY}-${name}`); return v === null ? fallback : v; } catch (_) { return fallback; }
 }
 function setPref(name, value) {
+  memPrefs[name] = String(value);
   try { localStorage.setItem(`${KEY}-${name}`, value); return true; } catch (_) { return false; }
 }
 
@@ -865,14 +883,44 @@ async function rpc(fn, body) {
   return text ? JSON.parse(text) : null;
 }
 // send this player's totals; quietly skipped until they've picked a name
-async function submitScore() {
+// (pass strict to get the error instead of a console warning)
+async function submitScore(strict = false) {
   if (!board) return;
   const p = player();
   if (!p.name) return;
   try {
     await rpc('submit_score', { p_player: p.id, p_token: p.token, p_name: p.name, p_levels: S.done.length, p_words: S.words });
-  } catch (e) { console.warn('Score not sent:', e.message); }
+  } catch (e) {
+    if (strict) throw e;
+    console.warn('Score not sent:', e.message);
+  }
 }
+const cleanName = s => s.replace(/\s+/g, ' ').trim().slice(0, 24);
+
+// Ask for a scoreboard name before the first game, so the player's progress shows up without extra steps.
+// Offline is fine: the name is kept and the score goes up after the next completed level.
+function askNameIfNeeded() {
+  if (!board || player().name) return false;
+  $('welcomeName').value = '';
+  $('nameStatus').textContent = '';
+  $('nameSheet').hidden = false;
+  $('welcomeName').focus();
+  return true;
+}
+$('nameForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = cleanName($('welcomeName').value);
+  if (!name) { $('nameStatus').textContent = 'Type a name of 1 to 24 characters.'; return; }
+  setPref('player-name', name);
+  $('nameBtn').disabled = true;
+  $('nameStatus').textContent = 'Saving…';
+  let online = true;
+  try { await submitScore(true); } catch (_) { online = false; }
+  $('nameBtn').disabled = false;
+  $('nameSheet').hidden = true;
+  toast(online ? `Welcome, ${name}! You're on the scoreboard.` : `Welcome, ${name}! Your score goes up once you're online.`, 2800);
+  checkDone();
+});
 async function loadBoard() {
   const list = $('boardList'), status = $('boardStatus'), me = player();
   status.textContent = 'Loading…';
@@ -921,7 +969,7 @@ $('renameBtn').onclick = () => {
 };
 $('joinForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const name = $('playerName').value.replace(/\s+/g, ' ').trim();
+  const name = cleanName($('playerName').value);
   if (!name) { $('boardStatus').textContent = 'Type a name of 1 to 24 characters.'; return; }
   const prev = player().name;
   setPref('player-name', name);
@@ -1116,6 +1164,8 @@ function start(data) {
     submitScore(); // the scoreboard row starts over with the game
     setTimeout(() => toast('New construction word set: starting from level 1', 3200), 600);
   }
+  // the name comes first; the level-complete check waits until it's saved
+  const askingName = askNameIfNeeded();
   if (!S.seen && tutorialActive()) {
     // new players learn on level 1's guided round instead of the how-to-play screen (still in the menu)
     S.seen = true; introShown = true; save();
@@ -1123,7 +1173,7 @@ function start(data) {
     introShown = true; $('startSheet').hidden = false; // checkDone runs when it's dismissed
     return;
   }
-  checkDone();
+  if (!askingName) checkDone(); // otherwise the name form runs it
 }
 try { window.claude?.hot?.snapshot?.(() => ({ S })); } catch (_) {}
 // on resize, re-lay out the board; only redraw the thread mid-drag so the word feedback isn't wiped
