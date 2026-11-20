@@ -13,7 +13,8 @@ Play it: https://claude.ai/artifact/VcMW5pSRt5heZtdz6jWTXC (private Claude artif
 | `levels/bonus.js` | Adds bonus words: every dictionary word (3+ letters) that can be spelled from a level's letters and isn't in its grid. |
 | `levels/levels.json` | Generated level data (committed, so you can build without the dictionary). |
 | `build.js` | Pastes the level data into the game and writes `dist/letter-loom.html`. |
-| `dist/letter-loom.html` | The single-file playable game. This is the file that gets published. |
+| `dist/letter-loom.html` | The single-file game, as published to the Claude artifact (the host supplies the doctype and viewport). |
+| `dist/standalone.html` | The same game with its own doctype, charset and viewport, for opening directly or hosting anywhere. |
 | `words/` | The ENABLE word list (git-ignored; fetch it with `npm run dictionary`). |
 
 ## Commands
@@ -21,7 +22,7 @@ Play it: https://claude.ai/artifact/VcMW5pSRt5heZtdz6jWTXC (private Claude artif
 Needs Node 18 or newer. There are no dependencies.
 
 ```sh
-npm run build        # rebuild dist/letter-loom.html from src + levels.json
+npm run build        # rebuild both files in dist/ from src + levels.json
 npm run dictionary   # download the ENABLE word list into words/
 npm run levels       # regenerate levels.json (layouts, then bonus words); needs the word list
 ```

@@ -164,6 +164,8 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 .primary:active { transform: translateY(2px); box-shadow: 0 1px 0 #9c3a24; }
 .ghost { font: 600 .9rem var(--body); background: none; border: 0; color: var(--ink); text-decoration: underline; cursor: pointer; padding: 6px; }
 
+[hidden] { display: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -228,7 +230,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <div class="eyebrow">How to play</div>
     <h2>Drag across the letters to spell words</h2>
     <p>Every word you find fills its row or column in the grid. Fill the whole grid to finish the level.</p>
-    <p>Stuck? Shuffle the wheel, or spend 30 spools to reveal a letter.</p>
+    <p>Stuck? Shuffle the wheel, or spend <span id="introCost">30</span> spools to reveal a letter.</p>
     <button class="primary" id="startBtn">Start weaving</button>
   </div>
 </div>
@@ -247,12 +249,29 @@ let letterEls = [];
 let sel = [], dragging = false, ptr = null;
 
 function fresh(level = 0, coins = 100, seen = false) {
-  return { level, coins, found: [], bonus: [], hints: [], seen };
+  return { level, coins, found: [], bonus: [], hints: [], seen, completed: false };
+}
+// accept saved state only if it has the shape the game expects
+function valid(s) {
+  const strings = a => Array.isArray(a) && a.every(x => typeof x === 'string');
+  return !!s && typeof s === 'object'
+    && Number.isInteger(s.level) && s.level >= 0
+    && Number.isFinite(s.coins) && s.coins >= 0
+    && strings(s.found) && strings(s.bonus) && strings(s.hints);
 }
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s.level === 'number') return s; } catch (e) {}
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (valid(s)) return s; } catch (e) {}
   return null;
 }
+// drop saved words and hints that no longer belong to this level (e.g. after levels are regenerated)
+function prune() {
+  const grid = new Set(LV.words.map(p => p.w)), bonus = new Set(LV.bonus);
+  S.found = [...new Set(S.found)].filter(w => grid.has(w));
+  S.bonus = [...new Set(S.bonus)].filter(w => bonus.has(w));
+  S.hints = [...new Set(S.hints)].filter(k => cells.has(k));
+  if (!allFound()) S.completed = false;
+}
+const allFound = () => LV.words.every(p => S.found.includes(p.w));
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 
 function cellsOf(p) {
@@ -285,6 +304,7 @@ function buildLevel() {
   buildWheel();
   layoutGrid();
   // restore progress
+  prune();
   for (const w of S.found) { const p = LV.words.find(q => q.w === w); if (p) cellsOf(p).forEach(k => cells.get(k).el.classList.add('on')); }
   for (const k of S.hints) cells.get(k)?.el.classList.add('hinted');
   updateHud();
@@ -471,20 +491,24 @@ function autoComplete() {
 }
 
 function checkDone() {
-  if (S.found.length < LV.words.length) return;
+  if (!allFound()) return;
+  // pay the reward once per level, even if the page is reloaded on the done screen
+  if (!S.completed) {
+    S.completed = true;
+    S.coins += LEVEL_REWARD;
+    save(); updateHud();
+  }
+  setTimeout(showDone, 650);
+}
+function showDone() {
   const last = S.level === LEVELS.length - 1;
-  S.coins += LEVEL_REWARD;
-  S.completed = true;
-  save(); updateHud();
-  setTimeout(() => {
-    $('doneEyebrow').textContent = `Level ${S.level + 1} complete`;
-    $('doneTitle').textContent = last ? 'You finished every level' : ['Nicely woven', 'Tight weave', 'Not a loose thread', 'Clean pattern'][S.level % 4];
-    $('doneWords').innerHTML = LV.words.map(p => p.w).sort((a, b) => b.length - a.length || a.localeCompare(b)).map(w => `<span>${w}</span>`).join('');
-    $('doneReward').innerHTML = `${spool()} +${LEVEL_REWARD} spools` + (S.bonus.length ? ` · ${S.bonus.length} bonus word${S.bonus.length > 1 ? 's' : ''}` : '');
-    $('nextBtn').textContent = last ? 'Play again from level 1' : `Start level ${S.level + 2}`;
-    $('doneSheet').hidden = false;
-    $('nextBtn').focus();
-  }, 650);
+  $('doneEyebrow').textContent = `Level ${S.level + 1} complete`;
+  $('doneTitle').textContent = last ? 'You finished every level' : ['Nicely woven', 'Tight weave', 'Not a loose thread', 'Clean pattern'][S.level % 4];
+  $('doneWords').innerHTML = LV.words.map(p => p.w).sort((a, b) => b.length - a.length || a.localeCompare(b)).map(w => `<span>${w}</span>`).join('');
+  $('doneReward').innerHTML = `${spool()} +${LEVEL_REWARD} spools` + (S.bonus.length ? ` · ${S.bonus.length} bonus word${S.bonus.length > 1 ? 's' : ''}` : '');
+  $('nextBtn').textContent = last ? 'Play again from level 1' : `Start level ${S.level + 2}`;
+  $('doneSheet').hidden = false;
+  $('nextBtn').focus();
 }
 $('nextBtn').onclick = () => {
   const next = (S.level + 1) % LEVELS.length;
@@ -523,6 +547,8 @@ function updateHud() {
   $('coins').textContent = S.coins;
   $('bonusCount').textContent = S.bonus.length;
   $('hintBtn').disabled = S.coins < HINT_COST;
+  $('hintCost').textContent = HINT_COST;
+  $('introCost').textContent = HINT_COST;
 }
 function spool() {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="3.5" rx="1.2" fill="#f2b640"/><rect x="5" y="17.5" width="14" height="3.5" rx="1.2" fill="#f2b640"/><rect x="7" y="6.5" width="10" height="11" fill="#d4573c"/></svg>';
@@ -547,13 +573,15 @@ function buzz() { tone(150, 0.18, 0.05, 'sawtooth'); try { navigator.vibrate?.([
 
 // ---- boot ----
 function start(data) {
-  S = (data && data.S) || load() || fresh();
+  S = (data && valid(data.S) && data.S) || load() || fresh();
   if (S.level >= LEVELS.length) S = fresh(0, S.coins, true);
   buildLevel();
+  save();
   if (!S.seen) $('startSheet').hidden = false;
-  else if (S.found.length >= LV.words.length) { S.coins -= LEVEL_REWARD; checkDone(); }
+  else checkDone();
 }
 try { window.claude?.hot?.snapshot?.(() => ({ S })); } catch (_) {}
-new ResizeObserver(() => { if (LV) { layoutGrid(); positionLetters(); drawThread(); } }).observe(document.body);
+// on resize, re-lay out the board; only redraw the thread mid-drag so the word feedback isn't wiped
+new ResizeObserver(() => { if (LV) { layoutGrid(); positionLetters(); if (dragging) drawThread(); } }).observe(document.body);
 window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 </script>
