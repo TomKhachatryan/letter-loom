@@ -46,7 +46,7 @@ body {
   gap: 8px;
 }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
-.brand { font-family: var(--display); font-weight: 800; font-size: 1.05rem; letter-spacing: .01em; }
+.brand { font-family: var(--display); font-weight: 800; font-size: 1.05rem; letter-spacing: .01em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand small { display: block; font-family: var(--body); font-weight: 600; font-size: .72rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
 .chips { display: flex; gap: 8px; }
 .chip {
@@ -202,6 +202,23 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 .primary:active { transform: translateY(2px); box-shadow: 0 1px 0 #9c3a24; }
 .ghost { font: 600 .9rem var(--body); background: none; border: 0; color: var(--ink); text-decoration: underline; cursor: pointer; padding: 6px; }
 
+/* scoreboard */
+.join { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.join label { font-size: .9rem; line-height: 1.4; }
+.join input {
+  font: 600 1rem var(--body); color: var(--ink); background: #fffaf0;
+  border: 1px solid var(--linen-edge); border-radius: 10px; padding: 12px;
+}
+.board { list-style: none; margin: 0; padding: 0; max-height: 42svh; overflow-y: auto; text-align: left; }
+.board li {
+  display: grid; grid-template-columns: 2.2em 1fr auto; gap: 4px 10px; align-items: baseline;
+  padding: 8px 6px; border-bottom: 1px solid rgba(28,33,71,.1); font-variant-numeric: tabular-nums;
+}
+.board li.me { background: rgba(212,87,60,.12); border-radius: 8px; }
+.board .rank { font: 800 1rem var(--display); color: #6b6380; }
+.board .who { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.board .score { font-size: .85rem; color: #6b6380; text-align: right; white-space: nowrap; }
+
 [hidden] { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -219,6 +236,9 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
       <button class="chip meter" id="bonusBtn" aria-label="Bonus meter">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>
         <span id="bonusCount">0</span>
+      </button>
+      <button class="chip icon-only" id="boardBtn" aria-label="Scoreboard" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
       </button>
       <div class="chip" aria-label="Spools">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="3.5" rx="1.2" fill="#f2b640"/><rect x="5" y="17.5" width="14" height="3.5" rx="1.2" fill="#f2b640"/><rect x="7" y="6.5" width="10" height="11" fill="#d4573c"/><path d="M7 9h10M7 12h10M7 15h10" stroke="#9c3a24" stroke-width="1"/></svg>
@@ -257,6 +277,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <p class="hint-line">Tap a word to translate it.</p>
     <div class="reward" id="doneReward"></div>
     <button class="primary" id="nextBtn">Next level</button>
+    <button type="button" class="ghost" id="doneBoardBtn" hidden>See the scoreboard</button>
   </div>
 </div>
 
@@ -294,6 +315,22 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
   </div>
 </div>
 
+<div class="sheet" id="boardSheet" hidden>
+  <div class="card">
+    <div class="eyebrow">Scoreboard</div>
+    <h2>Who's woven the most</h2>
+    <form class="join" id="joinForm" hidden>
+      <label for="playerName">Pick a name for the scoreboard. Everyone who plays can see it.</label>
+      <input id="playerName" type="text" maxlength="24" autocomplete="nickname" enterkeyhint="done" required>
+      <button class="primary" type="submit" id="joinBtn">Join the scoreboard</button>
+    </form>
+    <p class="hint-line" id="boardStatus" aria-live="polite"></p>
+    <ol class="board" id="boardList"></ol>
+    <button type="button" class="ghost" id="renameBtn" hidden>Change my name</button>
+    <button class="primary" id="boardClose">Back to the puzzle</button>
+  </div>
+</div>
+
 <div class="sheet" id="wordSheet" hidden>
   <div class="card">
     <div class="eyebrow" id="wordLang">English → Russian</div>
@@ -309,6 +346,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
 <script>
 const LEVELS = /*LEVELS*/[];
+const SCOREBOARD = /*SCOREBOARD*/null; // {url, key} of the Supabase project; filled in only for the installed app
 const TRANSLATIONS = /*TRANSLATIONS*/{};
 const HINT_COST = 30, LEVEL_REWARD = 15;
 const METER_SIZE = 10; // bonus words needed to fill the meter, which pays out one free hint
@@ -324,12 +362,21 @@ let sel = [], dragging = false, ptr = null;
 
 // v2 saves identify their level by levelId; saves without v predate that and need the one-time shift in migrate()
 const SAVE_VERSION = 2;
-// a new level's state; coins, the bonus meter and free hints carry over from `prev`
+// a new level's state; coins, the bonus meter, free hints and scoreboard stats carry over from `prev`
+// (done: ids of levels ever completed; words: grid and bonus words ever found)
 function fresh(level = 0, prev = {}) {
   return {
     v: SAVE_VERSION, level, found: [], bonus: [], hints: [], completed: false,
     coins: prev.coins ?? 100, meter: prev.meter ?? 0, freeHints: prev.freeHints ?? 0, seen: prev.seen ?? false,
+    done: prev.done ?? [], words: prev.words ?? 0,
   };
+}
+// saves from before the scoreboard have no stats: count every level before the current one as done
+function backfillStats(s) {
+  if (Array.isArray(s.done) && Number.isInteger(s.words)) return;
+  const before = LEVELS.slice(0, s.level);
+  s.done = before.map(l => l.l);
+  s.words = before.reduce((n, l) => n + l.words.length, 0) + s.found.length;
 }
 // fill in fields a save may lack, so an older save isn't thrown away for missing one
 function normalize(s) {
@@ -346,6 +393,7 @@ function valid(s) {
     && Number.isInteger(s.level) && s.level >= 0
     && Number.isFinite(s.coins) && s.coins >= 0
     && Number.isInteger(s.meter) && s.meter >= 0 && Number.isInteger(s.freeHints) && s.freeHints >= 0
+    && (s.done === undefined || strings(s.done)) && (s.words === undefined || (Number.isInteger(s.words) && s.words >= 0))
     && strings(s.found) && strings(s.bonus) && strings(s.hints);
 }
 function load() {
@@ -564,7 +612,7 @@ function submit(word) {
       cellsOf(p).forEach(k => { const el = cells.get(k).el; el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); });
       return;
     }
-    S.found.push(word);
+    S.found.push(word); S.words++;
     flash('good'); chime(true);
     translateTip();
     cellsOf(p).forEach((k, i) => { const el = cells.get(k).el; el.style.transitionDelay = ''; el.querySelector('span').style.transitionDelay = i * 60 + 'ms'; el.classList.add('on'); });
@@ -575,7 +623,7 @@ function submit(word) {
   }
   if (word.length >= 3 && LV.bonus.includes(word)) {
     if (S.bonus.includes(word)) { flash('dupe'); toast('Bonus word already found'); return; }
-    S.bonus.push(word);
+    S.bonus.push(word); S.words++;
     flash('bonus'); chime(false);
     if (++S.meter >= METER_SIZE) {
       S.meter = 0; S.freeHints++;
@@ -612,7 +660,9 @@ function checkDone() {
   if (!S.completed) {
     S.completed = true;
     S.coins += LEVEL_REWARD;
+    if (!S.done.includes(LV.l)) S.done.push(LV.l);
     save(); updateHud();
+    submitScore();
   }
   setTimeout(showDone, 650);
 }
@@ -718,6 +768,105 @@ function translateTip() {
   setTimeout(show, 900);
 }
 
+// ---- scoreboard ----
+// Scores live in Supabase (see supabase/schema.sql). Each device has a random player id and a secret token;
+// only the matching token can update that player's row. Ranked by levels completed, then words found.
+const board = SCOREBOARD && SCOREBOARD.url && SCOREBOARD.key ? SCOREBOARD : null;
+const randomHex = bytes => [...crypto.getRandomValues(new Uint8Array(bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
+function player() {
+  let id = pref('player-id'), token = pref('player-token');
+  if (!id || !token) {
+    const h = randomHex(16);
+    id = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${(8 | (parseInt(h[16], 16) & 3)).toString(16)}${h.slice(17, 20)}-${h.slice(20)}`;
+    token = randomHex(24);
+    setPref('player-id', id); setPref('player-token', token);
+  }
+  return { id, token, name: pref('player-name', '') };
+}
+async function rpc(fn, body) {
+  const headers = { 'Content-Type': 'application/json', apikey: board.key };
+  if (board.key.startsWith('eyJ')) headers.Authorization = `Bearer ${board.key}`; // legacy anon keys are JWTs
+  const res = await fetch(`${board.url.replace(/\/$/, '')}/rest/v1/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const text = await res.text();
+  if (!res.ok) { let msg = text; try { msg = JSON.parse(text).message || text; } catch (_) {} throw new Error(msg); }
+  return text ? JSON.parse(text) : null;
+}
+// send this player's totals; quietly skipped until they've picked a name
+async function submitScore() {
+  if (!board) return;
+  const p = player();
+  if (!p.name) return;
+  try {
+    await rpc('submit_score', { p_player: p.id, p_token: p.token, p_name: p.name, p_levels: S.done.length, p_words: S.words });
+  } catch (e) { console.warn('Score not sent:', e.message); }
+}
+async function loadBoard() {
+  const list = $('boardList'), status = $('boardStatus'), me = player();
+  status.textContent = 'Loading…';
+  try {
+    const rows = await rpc('leaderboard', { max_rows: 50 });
+    list.textContent = '';
+    rows.forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.player_id === me.id) li.className = 'me';
+      const rank = document.createElement('span'); rank.className = 'rank'; rank.textContent = i + 1;
+      const who = document.createElement('span'); who.className = 'who'; who.textContent = r.name + (r.player_id === me.id ? ' (you)' : '');
+      const score = document.createElement('span'); score.className = 'score';
+      score.textContent = `${r.levels} level${r.levels === 1 ? '' : 's'} · ${r.words} words`;
+      li.append(rank, who, score);
+      list.append(li);
+    });
+    status.textContent = rows.length ? 'Ranked by levels completed, then words found.' : 'No scores yet. Finish a level to be first.';
+  } catch (e) {
+    status.textContent = "Couldn't load the scoreboard. Check your connection and try again.";
+  }
+}
+function openBoard() {
+  if (!board) return;
+  const named = !!player().name;
+  $('joinForm').hidden = named;
+  $('renameBtn').hidden = !named;
+  if (!named) $('playerName').value = '';
+  $('boardSheet').hidden = false;
+  loadBoard();
+  if (!named) $('playerName').focus();
+}
+if (board) {
+  $('boardBtn').hidden = false;
+  $('doneBoardBtn').hidden = false;
+}
+$('boardBtn').onclick = () => { if (!modalOpen()) openBoard(); };
+$('doneBoardBtn').onclick = () => { $('doneSheet').hidden = true; openBoard(); };
+$('boardClose').onclick = () => {
+  $('boardSheet').hidden = true;
+  if (allFound() && S.completed) showDone(); // came from the level-complete screen: go back to it
+};
+$('renameBtn').onclick = () => {
+  $('playerName').value = player().name;
+  $('joinForm').hidden = false; $('renameBtn').hidden = true;
+  $('playerName').focus();
+};
+$('joinForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('playerName').value.replace(/\s+/g, ' ').trim();
+  if (!name) { $('boardStatus').textContent = 'Type a name of 1 to 24 characters.'; return; }
+  const prev = player().name;
+  setPref('player-name', name);
+  $('joinBtn').disabled = true;
+  $('boardStatus').textContent = 'Saving…';
+  try {
+    const p = player();
+    await rpc('submit_score', { p_player: p.id, p_token: p.token, p_name: name, p_levels: S.done.length, p_words: S.words });
+    $('joinForm').hidden = true; $('renameBtn').hidden = false;
+    await loadBoard();
+  } catch (err) {
+    setPref('player-name', prev);
+    $('boardStatus').textContent = `Couldn't save your name: ${err.message}`;
+  } finally {
+    $('joinBtn').disabled = false;
+  }
+});
+
 // ---- install ----
 // Chrome and Android fire beforeinstallprompt; iPhone Safari never does, so the app build shows Share-sheet steps there.
 let installEvt = null;
@@ -786,6 +935,7 @@ function buzz() { tone(150, 0.18, 0.05, 'sawtooth'); try { navigator.vibrate?.([
 function start(data) {
   S = (data && valid(normalize(data.S)) && data.S) || load() || fresh();
   migrate(S);
+  backfillStats(S);
   if (S.level >= LEVELS.length) S = fresh(0, S);
   buildLevel();
   save();

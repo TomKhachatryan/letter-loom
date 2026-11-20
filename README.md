@@ -13,6 +13,7 @@ Play it: https://tomkhachatryan.github.io/letter-loom/ (open it on your phone to
 | `levels/bonus.js` | Adds bonus words: common English words (3+ letters) that can be spelled from a level's letters and aren't in its grid. |
 | `levels/bonus-exclude.txt` | Words that pass the common-word filters but shouldn't count (names, abbreviations, archaic or crude words). |
 | `levels/translations.{ru,es,fr}.json` | Russian, Spanish and French translations for every grid word, shown when a player taps a word. The build stops if a grid word is missing from any of them. |
+| `supabase/schema.sql`, `scoreboard.config.json` | Scoreboard database setup, and the Supabase project the installed app talks to (see Scoreboard). |
 | `levels/levels.json` | Generated level data (committed, so you can build without the dictionary). |
 | `build.js` | Pastes the level data into the game and writes `dist/letter-loom.html`. |
 | `dist/letter-loom.html` | The single-file game, as published to the Claude artifact (the host supplies the doctype and viewport). |
@@ -33,6 +34,18 @@ npm run deploy       # build, then publish dist/app/ to GitHub Pages
 ```
 
 After editing the word lists in `levels/layout.js`, run `npm run levels` and then `npm run build`.
+
+## Scoreboard
+
+The installed app has a shared scoreboard, ranked by levels completed and then words found. It uses a free [Supabase](https://supabase.com) project as its database. The Claude artifact can't reach outside servers, so it has no scoreboard.
+
+Setup (once):
+1. Create a Supabase project.
+2. In its **SQL Editor**, run `supabase/schema.sql`.
+3. From **Project Settings → API**, copy the project URL and the publishable (or `anon`) key into `scoreboard.config.json`. Both are meant to be public. The table is closed to direct access, and players can only read the top scores and update their own row through the two functions in the schema.
+4. `npm run build`, commit, `npm run deploy`.
+
+Each phone gets a random player id and a secret token, stored on the phone. Players pick a display name the first time they open the scoreboard. Scores are sent when a level is completed. Clearing the browser's site data starts a new player.
 
 ## Installing on a phone
 

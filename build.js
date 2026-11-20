@@ -13,7 +13,7 @@ const src = read('src', 'game.html');
 const levels = read('levels', 'levels.json').trim();
 const LANGS = ['ru', 'es', 'fr'];
 const translations = Object.fromEntries(LANGS.map(l => [l, JSON.parse(read('levels', `translations.${l}.json`))]));
-for (const ph of ['/*LEVELS*/[]', '/*TRANSLATIONS*/{}']) {
+for (const ph of ['/*LEVELS*/[]', '/*TRANSLATIONS*/{}', '/*SCOREBOARD*/null']) {
   if (!src.includes(ph)) throw new Error(`src/game.html is missing the ${ph} placeholder`);
 }
 // every grid word needs a translation in every language, so a new level can't ship without them
@@ -40,7 +40,10 @@ fs.rmSync(app, { recursive: true, force: true });
 fs.rmSync(path.join(dist, 'standalone.html'), { force: true }); // replaced by dist/app/
 fs.mkdirSync(path.join(app, 'icons'), { recursive: true });
 
-fs.writeFileSync(path.join(dist, 'letter-loom.html'), out);
+// the scoreboard talks to Supabase, which only the installed app can reach (the Claude artifact blocks other hosts)
+const sb = JSON.parse(read('scoreboard.config.json'));
+const scoreboard = sb.url && sb.key ? JSON.stringify({ url: sb.url, key: sb.key }) : 'null';
+fs.writeFileSync(path.join(dist, 'letter-loom.html'), out.replace('/*SCOREBOARD*/null', 'null'));
 
 // the installable app carries its own document shell and install metadata
 const shell = `<!doctype html>
@@ -68,7 +71,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 </script>
 </html>
 `;
-const index = shell + out + register;
+const index = shell + out.replace('/*SCOREBOARD*/null', () => scoreboard) + register;
 fs.writeFileSync(path.join(app, 'index.html'), index);
 fs.copyFileSync(path.join(root, 'src', 'manifest.webmanifest'), path.join(app, 'manifest.webmanifest'));
 for (const f of fs.readdirSync(path.join(root, 'icons'))) {
@@ -81,4 +84,4 @@ const sw = read('src', 'sw.js').replace('__VERSION__', version);
 check(sw, 'sw');
 fs.writeFileSync(path.join(app, 'sw.js'), sw);
 
-console.log(`Built dist/letter-loom.html (${(out.length / 1024).toFixed(1)} KB) and dist/app/ (cache ${version})`);
+console.log(`Built dist/letter-loom.html (${(out.length / 1024).toFixed(1)} KB) and dist/app/ (cache ${version}, scoreboard ${scoreboard === 'null' ? 'off: fill in scoreboard.config.json' : 'on'})`);
