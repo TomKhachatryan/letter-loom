@@ -324,8 +324,15 @@ let order = [];   // wheel order: indexes into LV.l
 let letterEls = [];
 let sel = [], dragging = false, ptr = null;
 
+// v2 saves identify their level by levelId; saves without v predate that and need the one-time shift in migrate()
+const SAVE_VERSION = 2;
 function fresh(level = 0, coins = 100, seen = false) {
-  return { level, coins, found: [], bonus: [], hints: [], seen, completed: false };
+  return { v: SAVE_VERSION, level, coins, found: [], bonus: [], hints: [], seen, completed: false };
+}
+// fill in list fields a save may lack, so an older save isn't thrown away for missing one
+function normalize(s) {
+  if (s && typeof s === 'object') for (const k of ['found', 'bonus', 'hints']) if (s[k] === undefined) s[k] = [];
+  return s;
 }
 // accept saved state only if it has the shape the game expects
 function valid(s) {
@@ -336,7 +343,7 @@ function valid(s) {
     && strings(s.found) && strings(s.bonus) && strings(s.hints);
 }
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(KEY)); if (valid(s)) return s; } catch (e) {}
+  try { const s = normalize(JSON.parse(localStorage.getItem(KEY))); if (valid(s)) return s; } catch (e) {}
   return null;
 }
 // saves record their level by its wheel letters, so inserting or reordering levels keeps players on the same puzzle
@@ -344,9 +351,10 @@ function migrate(s) {
   if (typeof s.levelId === 'string') {
     const i = LEVELS.findIndex(l => l.l === s.levelId);
     if (i >= 0) s.level = i;
-  } else if (s.level >= 6) {
-    s.level += 4; // saves from before levelId existed predate the four 5-letter levels inserted after level 6
+  } else if (s.v === undefined && s.level >= 6) {
+    s.level += 4; // unversioned saves predate the four 5-letter levels inserted after level 6
   }
+  s.v = SAVE_VERSION; // stamp it so the shift can never run twice
 }
 // drop saved words and hints that no longer belong to this level (e.g. after levels are regenerated)
 function prune() {
@@ -487,7 +495,7 @@ function localPt(e) {
 
 const wheel = $('wheel');
 wheel.addEventListener('pointerdown', e => {
-  if (!LV || !$('doneSheet').hidden) return;
+  if (!LV || modalOpen()) return;
   const li = hit(e, true);
   if (li < 0) return;
   e.preventDefault();
@@ -601,13 +609,14 @@ function showDone() {
 $('nextBtn').onclick = () => {
   const next = (S.level + 1) % LEVELS.length;
   S = fresh(next, S.coins, true);
-  save();
   $('doneSheet').hidden = true;
-  buildLevel();
+  buildLevel(); // sets S.levelId, so save after it
+  save();
 };
 
-$('shuffleBtn').onclick = () => { shuffleOrder(false); $('shuffleBtn').classList.toggle('spin'); };
+$('shuffleBtn').onclick = () => { if (modalOpen()) return; shuffleOrder(false); $('shuffleBtn').classList.toggle('spin'); };
 $('hintBtn').onclick = () => {
+  if (modalOpen()) return;
   if (S.coins < HINT_COST) { toast(`You need ${HINT_COST} spools for a hint`); return; }
   // reveal the first hidden letter of the shortest unfinished word
   const open = LV.words.filter(p => !S.found.includes(p.w)).sort((a, b) => a.w.length - b.w.length);
@@ -622,6 +631,7 @@ $('hintBtn').onclick = () => {
   }
 };
 $('bonusBtn').onclick = () => {
+  if (modalOpen()) return;
   $('bonusIntro').textContent = LV.bonus.length
     ? `Any real word of three or more letters that isn't in the grid earns ${BONUS_REWARD} spools.`
     : 'These letters make no extra words beyond the grid.';
@@ -629,7 +639,13 @@ $('bonusBtn').onclick = () => {
   $('bonusSheet').hidden = false;
 };
 $('bonusClose').onclick = () => { $('bonusSheet').hidden = true; };
-$('startBtn').onclick = () => { $('startSheet').hidden = true; S.seen = true; save(); };
+$('startBtn').onclick = () => { $('startSheet').hidden = true; S.seen = true; save(); checkDone(); };
+
+// ---- pop-up screens ----
+// While any sheet is open, the game behind it is inert: no taps, no keyboard focus, no swipes.
+const modalOpen = () => [...document.querySelectorAll('.sheet')].some(s => !s.hidden);
+const syncInert = () => { $('app').inert = modalOpen(); };
+new MutationObserver(syncInert).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
 
 // ---- translations ----
 // Grid words carry bundled translations in each language; anything else gets a Google Translate link.
@@ -639,7 +655,7 @@ const LANG_KEY = KEY + '-lang';
 let lang = 'ru';
 try { const l = localStorage.getItem(LANG_KEY); if (LANGS[l]) lang = l; } catch (_) {}
 let shownWords = [];
-const wordButton = w => `<button type="button" data-word="${w}" aria-label="${w}: show translation">${w}</button>`;
+const wordButton = w => `<button type="button" data-word="${esc(w)}" aria-label="${esc(w)}: show translation">${esc(w)}</button>`;
 const lookupUrl = w => `https://translate.google.com/?sl=en&tl=${lang}&op=translate&text=${encodeURIComponent(w.toLowerCase())}`;
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function showWords(words) {
@@ -648,7 +664,7 @@ function showWords(words) {
   for (const b of document.querySelectorAll('#langs button')) b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
   $('wordEntries').innerHTML = words.map(w => {
     const tr = (TRANSLATIONS[lang] || {})[w];
-    return `<div class="entry"><h3>${w}</h3>` +
+    return `<div class="entry"><h3>${esc(w)}</h3>` +
       (tr ? `<p lang="${lang}">${esc(tr)}</p>` : `<p class="none">No built-in translation for this word yet.</p>`) +
       `<p><a class="lookup" href="${lookupUrl(w)}" target="_blank" rel="noopener">Look it up in Google Translate ↗</a></p></div>`;
   }).join('');
@@ -672,13 +688,17 @@ $('grid').addEventListener('click', e => {
 for (const id of ['doneWords', 'bonusWords']) {
   $(id).addEventListener('click', e => { const b = e.target.closest('button[data-word]'); if (b) showWords([b.dataset.word]); });
 }
-// tell existing players about it once, after their first new word
+// tell returning players about it once, after their first new word; new players already read it on the start screen
+let introShown = false;
 function translateTip() {
   try {
     if (localStorage.getItem(KEY + '-tip')) return;
     localStorage.setItem(KEY + '-tip', '1');
   } catch (_) { return; }
-  setTimeout(() => toast('Tap a word in the grid to translate it', 3000), 900);
+  if (introShown) return;
+  // wait for any toast already on screen (e.g. "Bonus word!") to finish instead of cutting it off
+  const show = () => $('toast').classList.contains('show') ? setTimeout(show, 600) : toast('Tap a word in the grid to translate it', 3000);
+  setTimeout(show, 900);
 }
 
 // ---- install ----
@@ -732,12 +752,12 @@ function buzz() { tone(150, 0.18, 0.05, 'sawtooth'); try { navigator.vibrate?.([
 
 // ---- boot ----
 function start(data) {
-  S = (data && valid(data.S) && data.S) || load() || fresh();
+  S = (data && valid(normalize(data.S)) && data.S) || load() || fresh();
   migrate(S);
   if (S.level >= LEVELS.length) S = fresh(0, S.coins, true);
   buildLevel();
   save();
-  if (!S.seen) $('startSheet').hidden = false;
+  if (!S.seen) { introShown = true; $('startSheet').hidden = false; } // checkDone runs when it's dismissed
   else checkDone();
 }
 try { window.claude?.hot?.snapshot?.(() => ({ S })); } catch (_) {}
