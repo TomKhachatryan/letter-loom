@@ -11,8 +11,16 @@ const read = (...p) => fs.readFileSync(path.join(root, ...p), 'utf8');
 
 const src = read('src', 'game.html');
 const levels = read('levels', 'levels.json').trim();
-if (!src.includes('/*LEVELS*/[]')) throw new Error('src/game.html is missing the /*LEVELS*/[] placeholder');
-const out = src.replace('/*LEVELS*/[]', () => levels);
+const translations = JSON.parse(read('levels', 'translations.ru.json'));
+for (const ph of ['/*LEVELS*/[]', '/*TRANSLATIONS*/{}']) {
+  if (!src.includes(ph)) throw new Error(`src/game.html is missing the ${ph} placeholder`);
+}
+// every grid word needs a translation, so a new level can't ship without them
+const untranslated = [...new Set(JSON.parse(levels).flatMap(l => l.words.map(p => p.w)))].filter(w => !translations[w]);
+if (untranslated.length) throw new Error(`Add these words to levels/translations.ru.json: ${untranslated.join(', ')}`);
+const out = src
+  .replace('/*LEVELS*/[]', () => levels)
+  .replace('/*TRANSLATIONS*/{}', () => JSON.stringify(translations));
 
 // syntax-check scripts before writing anything
 function check(js, name) {

@@ -116,6 +116,17 @@ button.chip { cursor: pointer; }
   pointer-events: none;
 }
 .letter.sel { background: var(--madder); color: var(--linen); }
+/* shuffle sits in the empty middle of the wheel, inside the ring of letters and below the thread */
+.center-shuffle {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: clamp(40px, 17%, 54px); height: clamp(40px, 17%, 54px);
+  border-radius: 50%; padding: 0; cursor: pointer;
+  border: 2px dashed rgba(241,232,212,.35); background: var(--cloth-deep); color: var(--linen);
+  display: grid; place-items: center;
+}
+.center-shuffle svg { width: 52%; height: 52%; transition: transform .35s ease; }
+.center-shuffle.spin svg { transform: rotate(180deg); }
+.center-shuffle:active { transform: translate(-50%, -50%) scale(.92); }
 .tool {
   position: absolute; bottom: 4px; width: 50px; height: 50px; border-radius: 50%;
   border: 1px solid var(--cloth-lift); background: var(--cloth-deep); color: var(--linen);
@@ -156,7 +167,16 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 .card p { margin: 0; line-height: 1.45; }
 .card .eyebrow { font: 600 .72rem var(--body); letter-spacing: .1em; text-transform: uppercase; color: #6b6380; }
 .words { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.words span { font: 700 .85rem var(--display); background: rgba(28,33,71,.08); border-radius: 6px; padding: 4px 8px; letter-spacing: .04em; }
+.words span, .words button { font: 700 .85rem var(--display); background: rgba(28,33,71,.08); color: var(--ink); border: 0; border-radius: 6px; padding: 4px 8px; letter-spacing: .04em; }
+.words button { cursor: pointer; padding: 6px 10px; }
+.words button:active { background: rgba(28,33,71,.18); }
+.hint-line { font-size: .85rem; color: #6b6380; }
+.cell.on { cursor: pointer; }
+.entries { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+.entry h3 { margin: 0; font: 800 1.6rem/1.1 var(--display); letter-spacing: .02em; }
+.entry p { margin: 4px 0 0; font-size: 1.1rem; line-height: 1.4; }
+.entry .none { font-size: .95rem; color: #6b6380; }
+.lookup { color: var(--ink); font-weight: 600; font-size: .9rem; }
 .reward { display: inline-flex; align-items: center; gap: 6px; justify-content: center; font: 700 1rem var(--body); }
 .reward svg { width: 20px; height: 20px; }
 .primary {
@@ -197,10 +217,10 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
   <div class="dock">
     <div class="toast" id="toast"></div>
-    <button class="tool left" id="shuffleBtn" aria-label="Shuffle letters">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
-    </button>
     <div class="wheel" id="wheel" role="application" aria-label="Letter wheel. Drag across letters to spell a word.">
+      <button type="button" class="center-shuffle" id="shuffleBtn" aria-label="Shuffle letters">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+      </button>
       <svg id="thread"><polyline id="line" points=""/></svg>
     </div>
     <button class="tool right" id="hintBtn" aria-label="Reveal a letter">
@@ -215,6 +235,7 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <div class="eyebrow" id="doneEyebrow">Level 1 complete</div>
     <h2 id="doneTitle">Nicely woven</h2>
     <div class="words" id="doneWords"></div>
+    <p class="hint-line">Tap a word to see it in Russian.</p>
     <div class="reward" id="doneReward"></div>
     <button class="primary" id="nextBtn">Next level</button>
   </div>
@@ -248,13 +269,23 @@ button:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
     <div class="eyebrow">How to play</div>
     <h2>Drag across the letters to spell words</h2>
     <p>Every word you find fills its row or column in the grid. Fill the whole grid to finish the level.</p>
+    <p>Don't know a word? Tap it in the grid to see it in Russian.</p>
     <p>Stuck? Shuffle the wheel, or spend <span id="introCost">30</span> spools to reveal a letter.</p>
     <button class="primary" id="startBtn">Start weaving</button>
   </div>
 </div>
 
+<div class="sheet" id="wordSheet" hidden>
+  <div class="card">
+    <div class="eyebrow">English → Russian</div>
+    <div class="entries" id="wordEntries"></div>
+    <button class="primary" id="wordClose">Back</button>
+  </div>
+</div>
+
 <script>
 const LEVELS = /*LEVELS*/[];
+const TRANSLATIONS = /*TRANSLATIONS*/{};
 const HINT_COST = 30, LEVEL_REWARD = 15, BONUS_REWARD = 3;
 const KEY = 'letter-loom-v1';
 const $ = id => document.getElementById(id);
@@ -319,6 +350,7 @@ function buildLevel() {
       if (cells.has(k)) return;
       const el = document.createElement('div');
       el.className = 'cell';
+      el.dataset.k = k;
       const sp = document.createElement('span');
       sp.textContent = p.w[i];
       el.appendChild(sp);
@@ -381,7 +413,7 @@ function buildWheel() {
 
 function geometry() {
   const s = $('wheel').clientWidth, n = LV.l.length;
-  const r = n <= 3 ? s * 0.27 : s * 0.32;
+  const r = n <= 3 ? s * 0.3 : s * 0.32;
   const d = Math.min(s * 0.24, (2 * Math.PI * r / n) * 0.78);
   return { s, r, d, n };
 }
@@ -467,12 +499,12 @@ function flash(kind) {
   clearTimeout(flash.t);
   flash.t = setTimeout(() => { if (!dragging) pv.innerHTML = ''; pv.className = 'preview'; }, kind === 'shake' ? 420 : 650);
 }
-function toast(msg) {
+function toast(msg, ms = 1400) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove('show'), 1400);
+  toast.t = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 function submit(word) {
@@ -486,6 +518,7 @@ function submit(word) {
     }
     S.found.push(word);
     flash('good'); chime(true);
+    translateTip();
     cellsOf(p).forEach((k, i) => { const el = cells.get(k).el; el.style.transitionDelay = ''; el.querySelector('span').style.transitionDelay = i * 60 + 'ms'; el.classList.add('on'); });
     autoComplete();
     save(); updateHud();
@@ -532,7 +565,7 @@ function showDone() {
   const last = S.level === LEVELS.length - 1;
   $('doneEyebrow').textContent = `Level ${S.level + 1} complete`;
   $('doneTitle').textContent = last ? 'You finished every level' : ['Nicely woven', 'Tight weave', 'Not a loose thread', 'Clean pattern'][S.level % 4];
-  $('doneWords').innerHTML = LV.words.map(p => p.w).sort((a, b) => b.length - a.length || a.localeCompare(b)).map(w => `<span>${w}</span>`).join('');
+  $('doneWords').innerHTML = LV.words.map(p => p.w).sort((a, b) => b.length - a.length || a.localeCompare(b)).map(wordButton).join('');
   $('doneReward').innerHTML = `${spool()} +${LEVEL_REWARD} spools` + (S.bonus.length ? ` · ${S.bonus.length} bonus word${S.bonus.length > 1 ? 's' : ''}` : '');
   $('nextBtn').textContent = last ? 'Play again from level 1' : `Start level ${S.level + 2}`;
   $('doneSheet').hidden = false;
@@ -546,7 +579,7 @@ $('nextBtn').onclick = () => {
   buildLevel();
 };
 
-$('shuffleBtn').onclick = () => { shuffleOrder(false); };
+$('shuffleBtn').onclick = () => { shuffleOrder(false); $('shuffleBtn').classList.toggle('spin'); };
 $('hintBtn').onclick = () => {
   if (S.coins < HINT_COST) { toast(`You need ${HINT_COST} spools for a hint`); return; }
   // reveal the first hidden letter of the shortest unfinished word
@@ -565,11 +598,46 @@ $('bonusBtn').onclick = () => {
   $('bonusIntro').textContent = LV.bonus.length
     ? `Any real word of three or more letters that isn't in the grid earns ${BONUS_REWARD} spools.`
     : 'These letters make no extra words beyond the grid.';
-  $('bonusWords').innerHTML = S.bonus.length ? [...S.bonus].sort().map(w => `<span>${w}</span>`).join('') : '<p>None found yet.</p>';
+  $('bonusWords').innerHTML = S.bonus.length ? [...S.bonus].sort().map(wordButton).join('') : '<p>None found yet.</p>';
   $('bonusSheet').hidden = false;
 };
 $('bonusClose').onclick = () => { $('bonusSheet').hidden = true; };
 $('startBtn').onclick = () => { $('startSheet').hidden = true; S.seen = true; save(); };
+
+// ---- translations ----
+// Grid words carry a bundled Russian translation; anything else gets a Google Translate link.
+const wordButton = w => `<button type="button" data-word="${w}" aria-label="${w}: show translation">${w}</button>`;
+const lookupUrl = w => `https://translate.google.com/?sl=en&tl=ru&op=translate&text=${encodeURIComponent(w.toLowerCase())}`;
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function showWords(words) {
+  $('wordEntries').innerHTML = words.map(w => {
+    const tr = TRANSLATIONS[w];
+    return `<div class="entry"><h3>${w}</h3>` +
+      (tr ? `<p lang="ru">${esc(tr)}</p>` : `<p class="none">No built-in translation for this word yet.</p>`) +
+      `<p><a class="lookup" href="${lookupUrl(w)}" target="_blank" rel="noopener">Look it up in Google Translate ↗</a></p></div>`;
+  }).join('');
+  $('wordSheet').hidden = false;
+  $('wordClose').focus();
+}
+$('wordClose').onclick = () => { $('wordSheet').hidden = true; };
+// tap a found word in the grid; a crossing cell shows both words
+$('grid').addEventListener('click', e => {
+  const el = e.target.closest('.cell');
+  if (!el || !el.classList.contains('on')) return;
+  const words = LV.words.filter(p => S.found.includes(p.w) && cellsOf(p).includes(el.dataset.k)).map(p => p.w);
+  if (words.length) showWords(words);
+});
+for (const id of ['doneWords', 'bonusWords']) {
+  $(id).addEventListener('click', e => { const b = e.target.closest('button[data-word]'); if (b) showWords([b.dataset.word]); });
+}
+// tell existing players about it once, after their first new word
+function translateTip() {
+  try {
+    if (localStorage.getItem(KEY + '-tip')) return;
+    localStorage.setItem(KEY + '-tip', '1');
+  } catch (_) { return; }
+  setTimeout(() => toast('Tap a word in the grid to see it in Russian', 3000), 900);
+}
 
 // ---- install ----
 // Chrome and Android fire beforeinstallprompt; iPhone Safari never does, so the app build shows Share-sheet steps there.

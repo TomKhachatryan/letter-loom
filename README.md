@@ -11,6 +11,7 @@ Play it: https://tomkhachatryan.github.io/letter-loom/ (open it on your phone to
 | `src/game.html` | The game: markup, styles and script. Level data goes in at `/*LEVELS*/[]`. |
 | `levels/layout.js` | Word lists for each level, plus the crossword layout generator. |
 | `levels/bonus.js` | Adds bonus words: every dictionary word (3+ letters) that can be spelled from a level's letters and isn't in its grid. |
+| `levels/translations.ru.json` | Russian translations for every grid word, shown when a player taps a word. The build stops if a grid word has none. |
 | `levels/levels.json` | Generated level data (committed, so you can build without the dictionary). |
 | `build.js` | Pastes the level data into the game and writes `dist/letter-loom.html`. |
 | `dist/letter-loom.html` | The single-file game, as published to the Claude artifact (the host supplies the doctype and viewport). |
